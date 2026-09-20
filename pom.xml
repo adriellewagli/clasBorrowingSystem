@@ -144,7 +144,7 @@
                     <execution>
                         <id>default-cli</id>
                         <configuration>
-                            <mainClass>com.borrowclas.clasborrowingsystem/com.borrowclas.clasborrowingsystem.HelloApplication</mainClass>
+                            <mainClass>com.borrowclas.clasborrowingsystem.Launcher</mainClass>
                             <launcher>app</launcher>
                             <jlinkZipName>app</jlinkZipName>
                             <jlinkImageName>app</jlinkImageName>

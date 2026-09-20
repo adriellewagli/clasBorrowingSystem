@@ -95,7 +95,12 @@ public class LoginFrame extends JFrame {
                 String fullName = rs.getString("full_name");
 
                 JOptionPane.showMessageDialog(this, "Welcome, " + fullName + " (" + role + ")!", "Login Successful", JOptionPane.INFORMATION_MESSAGE);
+
+                // Close login frame
                 this.dispose();
+
+                // Open main dashboard frame
+                new DashboardFrame(fullName, role).setVisible(true);
             } else {
                 JOptionPane.showMessageDialog(this, "Invalid credentials or account is inactive.", "Login Failed", JOptionPane.ERROR_MESSAGE);
             }
