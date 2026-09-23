@@ -13,12 +13,12 @@
 <HBox styleClass="root-container" stylesheets="@styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="ui.LoginController">
     <children>
         <!-- Left Hero Banner (Brand / Announcement Panel) -->
-        <VBox alignment="CENTER_LEFT" spacing="15.0" styleClass="hero-banner" HBox.hgrow="ALWAYS">
+        <VBox alignment="CENTER_LEFT" spacing="15.0" styleClass="hero-banner" prefWidth="420.0" minWidth="420.0" maxWidth="420.0">
             <padding>
-                <Insets bottom="60.0" left="80.0" right="80.0" top="60.0" />
+                <Insets bottom="60.0" left="55.0" right="55.0" top="60.0" />
             </padding>
             <children>
-                <Label styleClass="hero-title" text="CLAS Borrowing System" />
+                <Label styleClass="hero-title" text="CLAS Borrowing&#10;System" wrapText="true" />
                 <Label styleClass="hero-subtitle" text="Seamless equipment tracking, borrowing, and inventory management for your organization." wrapText="true" />
             </children>
         </VBox>
@@ -49,8 +49,8 @@
                                         <Label styleClass="field-label" text="Password" />
                                         <StackPane alignment="CENTER_RIGHT">
                                             <children>
-                                                <PasswordField fx:id="txtPassword" onAction="#handleLogin" promptText="Enter your password" />
-                                                <TextField fx:id="txtPasswordShown" managed="false" onAction="#handleLogin" promptText="Enter your password" visible="false" />
+                                                <PasswordField fx:id="txtPassword" onAction="#handleLogin" promptText="Enter your password" styleClass="password-input" />
+                                                <TextField fx:id="txtPasswordShown" managed="false" onAction="#handleLogin" promptText="Enter your password" styleClass="password-input" visible="false" />
                                                 <Button fx:id="btnTogglePassword" onAction="#togglePasswordVisibility" styleClass="icon-button" text="Show" StackPane.alignment="CENTER_RIGHT">
                                                     <StackPane.margin>
                                                         <Insets right="12.0" />

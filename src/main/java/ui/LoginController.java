@@ -94,6 +94,7 @@ public class LoginController {
             ResultSet rs = pstmt.executeQuery();
 
             if (rs.next()) {
+                int userId = rs.getInt("user_id");
                 String fullName = rs.getString("full_name");
                 String role = rs.getString("role");
 
@@ -101,12 +102,12 @@ public class LoginController {
                 Parent root = loader.load();
 
                 DashboardController dashboardController = loader.getController();
-                dashboardController.setUserContext(fullName, role);
+                dashboardController.setUserContext(userId, fullName, role);
 
                 Stage stage = (Stage) btnLogin.getScene().getWindow();
-                stage.setScene(new Scene(root, 900, 600));
+                stage.setScene(new Scene(root, MainApp.APP_WIDTH, MainApp.APP_HEIGHT));
+                stage.setResizable(false);
                 stage.setTitle("CLAS Equipment Borrowing System - Dashboard");
-                stage.setMaximized(true);
 
             } else {
                 lblMessage.setStyle("-fx-text-fill: #e63946;");
