@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane prefHeight="720.0" prefWidth="1100.0" styleClass="root-container" stylesheets="@../css/styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controller.DashboardController">
+
+    <!-- Top System Navigation Header -->
+    <top>
+        <HBox alignment="CENTER_LEFT" spacing="12.0" style="-fx-background-color: #3b4252;" styleClass="top-header">
+            <padding>
+                <Insets bottom="10.0" left="20.0" right="20.0" top="10.0" />
+            </padding>
+            <children>
+                <HBox alignment="CENTER" styleClass="logo-badge">
+                    <children>
+                        <Label styleClass="logo-text" text="CL" />
+                    </children>
+                </HBox>
+                <VBox alignment="CENTER_LEFT" spacing="1.0">
+                    <children>
+                        <Label style="-fx-text-fill: #ffffff; -fx-font-weight: bold; -fx-font-size: 14px;" text="CLAS Equipment Borrowing Management System" />
+                        <Label style="-fx-text-fill: #d8dee9; -fx-font-size: 11px;" text="College of Liberal Arts &amp; Sciences • Local LAN Node" />
+                    </children>
+                </VBox>
+
+                <!-- Fixed Region hgrow -->
+                <Region HBox.hgrow="ALWAYS" />
+
+                <!-- Network Status Pill & Session Details -->
+                <HBox alignment="CENTER" spacing="12.0">
+                    <children>
+                        <Label style="-fx-background-color: #2e3440; -fx-text-fill: #a3be8c; -fx-padding: 4px 10px; -fx-background-radius: 12px; -fx-font-size: 11px;" text="● LAN Connected (10.147.4.201)" />
+                        <Label fx:id="lblHeaderRoleLock" style="-fx-text-fill: #d8dee9; -fx-font-size: 11px; -fx-font-weight: bold;" text="CONSOLE_ACTIVE" />
+                        <Button onAction="#handleLogout" styleClass="card-link" text="Logout" />
+                    </children>
+                </HBox>
+            </children>
+        </HBox>
+    </top>
+
+    <!-- Main Workspace with Left Sidebar and Right Canvas -->
+    <center>
+        <HBox spacing="0.0" BorderPane.alignment="CENTER">
+            <children>
+
+                <!-- Left Navigation Sidebar -->
+                <VBox minWidth="220.0" prefWidth="220.0" spacing="18.0" style="-fx-background-color: #ffffff; -fx-border-color: #e5e7eb; -fx-border-width: 0 1 0 0;">
+                    <padding>
+                        <Insets bottom="20.0" left="16.0" right="16.0" top="20.0" />
+                    </padding>
+                    <children>
+
+                        <!-- User Profile Card -->
+                        <HBox alignment="CENTER_LEFT" spacing="12.0">
+                            <children>
+                                <HBox alignment="CENTER" minHeight="40.0" minWidth="40.0" style="-fx-background-color: #e0e7ff; -fx-background-radius: 20.0;">
+                                    <children>
+                                        <Label fx:id="lblUserAvatar" style="-fx-text-fill: #4338ca; -fx-font-weight: bold;" text="US" />
+                                    </children>
+                                </HBox>
+                                <VBox alignment="CENTER_LEFT" spacing="2.0">
+                                    <children>
+                                        <Label fx:id="lblUserName" style="-fx-font-weight: bold; -fx-font-size: 13px;" text="Logged User" />
+                                        <Label fx:id="lblUserRole" style="-fx-background-color: #f3f4f6; -fx-text-fill: #4b5563; -fx-padding: 2px 6px; -fx-background-radius: 4px; -fx-font-size: 10px; -fx-font-weight: bold;" text="USER" />
+                                    </children>
+                                </VBox>
+                            </children>
+                        </HBox>
+
+                        <!-- Navigation Items -->
+                        <!-- Fixed VBox.vgrow -->
+                        <VBox spacing="6.0" VBox.vgrow="ALWAYS">
+                            <children>
+                                <Button maxWidth="1.7976931348623157E308" alignment="BASELINE_LEFT" style="-fx-background-color: #e0e7ff; -fx-text-fill: #4338ca; -fx-font-weight: bold;" text="📦 Equipment Directory" />
+                                <Button fx:id="btnNavTransactions" maxWidth="1.7976931348623157E308" alignment="BASELINE_LEFT" styleClass="card-link" text="📋 Log Transactions" />
+                                <Button fx:id="btnNavAdmin" maxWidth="1.7976931348623157E308" alignment="BASELINE_LEFT" styleClass="card-link" text="⚙️ Admin Control Panel" />
+                                <Button fx:id="btnNavUsers" maxWidth="1.7976931348623157E308" onAction="#handleManageUsers" alignment="BASELINE_LEFT" styleClass="card-link" text="👥 User Management" />
+                                <Button fx:id="btnNavAudit" maxWidth="1.7976931348623157E308" alignment="BASELINE_LEFT" styleClass="card-link" text="📄 System Audit Logs" />
+                            </children>
+                        </VBox>
+
+                    </children>
+                </VBox>
+
+                <!-- Right Main Content Area -->
+                <!-- Fixed HBox.hgrow -->
+                <VBox spacing="16.0" style="-fx-background-color: #f8fafc;" HBox.hgrow="ALWAYS">
+                    <padding>
+                        <Insets bottom="24.0" left="24.0" right="24.0" top="20.0" />
+                    </padding>
+                    <children>
+
+                        <!-- Header Title & Alert Banner -->
+                        <HBox alignment="CENTER_LEFT" spacing="12.0">
+                            <children>
+                                <VBox spacing="2.0">
+                                    <children>
+                                        <Label style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1e293b;" text="Equipment &amp; Inventory Directory" />
+                                        <Label style="-fx-text-fill: #64748b; -fx-font-size: 12px;" text="Central CLAS laboratory and equipment tracking interface." />
+                                    </children>
+                                </VBox>
+                                <!-- Fixed Region hgrow -->
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Label style="-fx-background-color: #fef3c7; -fx-text-fill: #b45309; -fx-padding: 8px 12px; -fx-background-radius: 6px; -fx-font-size: 11px; -fx-font-weight: bold;" text="⚠️ LAN Node Mode: Local Database Master Sync Active" />
+                            </children>
+                        </HBox>
+
+                        <!-- Summary Cards Row -->
+                        <HBox spacing="16.0">
+                            <children>
+                                <!-- Total Items (Fixed HBox.hgrow) -->
+                                <VBox style="-fx-background-color: #ffffff; -fx-background-radius: 8px; -fx-border-color: #e2e8f0; -fx-border-radius: 8px;" HBox.hgrow="ALWAYS">
+                                    <padding><Insets bottom="14.0" left="16.0" right="16.0" top="14.0" /></padding>
+                                    <children>
+                                        <Label style="-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;" text="TOTAL INVENTORY ITEMS" />
+                                        <Label fx:id="lblTotalItems" style="-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #0f172a;" text="0 Items" />
+                                    </children>
+                                </VBox>
+
+                                <!-- Available (Fixed HBox.hgrow) -->
+                                <VBox style="-fx-background-color: #ffffff; -fx-background-radius: 8px; -fx-border-color: #e2e8f0; -fx-border-radius: 8px;" HBox.hgrow="ALWAYS">
+                                    <padding><Insets bottom="14.0" left="16.0" right="16.0" top="14.0" /></padding>
+                                    <children>
+                                        <Label style="-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;" text="READY TO BORROW" />
+                                        <Label fx:id="lblAvailableItems" style="-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #16a34a;" text="0 Ready" />
+                                    </children>
+                                </VBox>
+
+                                <!-- Checked Out (Fixed HBox.hgrow) -->
+                                <VBox style="-fx-background-color: #ffffff; -fx-background-radius: 8px; -fx-border-color: #e2e8f0; -fx-border-radius: 8px;" HBox.hgrow="ALWAYS">
+                                    <padding><Insets bottom="14.0" left="16.0" right="16.0" top="14.0" /></padding>
+                                    <children>
+                                        <Label style="-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;" text="CURRENTLY CHECKED OUT" />
+                                        <Label fx:id="lblBorrowedItems" style="-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #dc2626;" text="0 Borrowed" />
+                                    </children>
+                                </VBox>
+                            </children>
+                        </HBox>
+
+                        <!-- Search & Quick Actions -->
+                        <HBox alignment="CENTER_LEFT" spacing="12.0">
+                            <children>
+                                <!-- Fixed TextField hgrow -->
+                                <TextField fx:id="txtSearch" promptText="Search by item name, category, or serial..." styleClass="clean-text-field" HBox.hgrow="ALWAYS" />
+                                <Button fx:id="btnBorrow" onAction="#handleBorrow" styleClass="btn-lavender" text="Log Borrow" />
+                                <Button fx:id="btnReturn" onAction="#handleReturn" styleClass="btn-lavender" text="Log Return" />
+                                <Button fx:id="btnAddEquipment" onAction="#handleAddEquipment" styleClass="btn-lavender" text="+ Add Item" />
+                            </children>
+                        </HBox>
+
+                        <!-- Main Inventory Table -->
+                        <!-- Fixed TableView vgrow -->
+                        <TableView fx:id="tblEquipment" VBox.vgrow="ALWAYS">
+                            <columns>
+                                <TableColumn fx:id="colId" prefWidth="70.0" text="Item ID" />
+                                <TableColumn fx:id="colName" prefWidth="250.0" text="Equipment Description" />
+                                <TableColumn fx:id="colCategory" prefWidth="180.0" text="Category" />
+                                <TableColumn fx:id="colSerial" prefWidth="180.0" text="Serial Number" />
+                                <TableColumn fx:id="colStatus" prefWidth="150.0" text="Availability Status" />
+                            </columns>
+                        </TableView>
+
+                    </children>
+                </VBox>
+
+            </children>
+        </HBox>
+    </center>
+</BorderPane>

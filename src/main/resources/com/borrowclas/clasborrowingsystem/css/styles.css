@@ -1,0 +1,198 @@
+/* ==========================================================================
+   CLAS Equipment Borrowing System - Minimalist UI
+   ========================================================================== */
+
+/* Overall Canvas Background */
+.root-container,
+.main-canvas {
+    -fx-background-color: #F8FAFC;
+}
+
+/* --------------------------------------------------------------------------
+   Top Bar Header
+   -------------------------------------------------------------------------- */
+.top-header {
+    -fx-background-color: #4A4D78;
+}
+
+.logo-badge {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 6px;
+    -fx-min-width: 32px;
+    -fx-min-height: 32px;
+    -fx-max-width: 32px;
+    -fx-max-height: 32px;
+}
+
+.logo-text {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #4A4D78;
+}
+
+.header-title {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FFFFFF;
+}
+
+.header-subtitle {
+    -fx-font-size: 11px;
+    -fx-text-fill: #C2C5E0;
+}
+
+/* --------------------------------------------------------------------------
+   Centered Form Card
+   -------------------------------------------------------------------------- */
+.login-card {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 12px;
+    -fx-border-color: #E2E8F0;
+    -fx-border-radius: 12px;
+    -fx-border-width: 1px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.03), 16, 0, 0, 4);
+}
+
+.card-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #0F172A;
+}
+
+.card-subtitle {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: #64748B;
+}
+
+.input-label {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1E293B;
+}
+
+/* --------------------------------------------------------------------------
+   Input Fields
+   -------------------------------------------------------------------------- */
+.clean-text-field {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 6px;
+    -fx-border-radius: 6px;
+    -fx-border-color: #CBD5E1;
+    -fx-border-width: 1px;
+    -fx-padding: 10px 12px;
+    -fx-font-size: 13px;
+    -fx-text-fill: #0F172A;
+    -fx-prompt-text-fill: #94A3B8;
+}
+
+.clean-text-field:focused {
+    -fx-border-color: #818CF8;
+    -fx-border-width: 1.5px;
+    -fx-effect: dropshadow(gaussian, rgba(129, 140, 248, 0.2), 6, 0, 0, 0);
+}
+
+.password-padding {
+    -fx-padding: 10px 38px 10px 12px;
+}
+
+/* --------------------------------------------------------------------------
+   SVG Eye Toggle Button
+   -------------------------------------------------------------------------- */
+.eye-toggle-btn {
+    -fx-background-color: transparent !important;
+    -fx-background-insets: 0 !important;
+    -fx-background-radius: 0 !important;
+    -fx-border-color: transparent !important;
+    -fx-border-width: 0 !important;
+    -fx-focus-color: transparent !important;
+    -fx-faint-focus-color: transparent !important;
+    -fx-shadow-highlight-color: transparent !important;
+    -fx-padding: 0 !important;
+
+    /* Strict square dimensions */
+    -fx-min-width: 20px;
+    -fx-min-height: 20px;
+    -fx-pref-width: 20px;
+    -fx-pref-height: 20px;
+    -fx-max-width: 20px;
+    -fx-max-height: 20px;
+
+    /* Disables JavaFX SVG coordinate stretching */
+    -fx-scale-shape: false;
+    -fx-position-shape: true;
+    -fx-cursor: hand;
+}
+
+/* Eye Open Icon Shape */
+.eye-toggle-btn.eye-open {
+    -fx-shape: "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z";
+    -fx-background-color: #64748B !important;
+}
+
+/* Eye Closed Icon Shape */
+.eye-toggle-btn.eye-closed {
+    -fx-shape: "M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.44-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2z";
+    -fx-background-color: #64748B !important;
+}
+
+.eye-toggle-btn:hover {
+    -fx-background-color: #1E293B !important;
+}
+
+/* --------------------------------------------------------------------------
+   Primary Login Button
+   -------------------------------------------------------------------------- */
+.btn-lavender {
+    -fx-background-color: #4F46E5;
+    -fx-background-radius: 6px;
+    -fx-text-fill: #FFFFFF;
+    -fx-font-weight: bold;
+    -fx-font-size: 13.5px;
+    -fx-padding: 11px 0;
+    -fx-cursor: hand;
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+}
+
+.btn-lavender:hover {
+    -fx-background-color: #4338CA;
+}
+
+.btn-lavender:pressed {
+    -fx-background-color: #3730A3;
+}
+
+/* --------------------------------------------------------------------------
+   Links & Text
+   -------------------------------------------------------------------------- */
+.links-row {
+    -fx-border-color: #F1F5F9;
+    -fx-border-width: 0 0 1px 0;
+    -fx-padding: 0 0 12px 0;
+}
+
+.card-link,
+.card-link-bold {
+    -fx-text-fill: #475569;
+    -fx-font-size: 12px;
+    -fx-border-color: transparent;
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+    -fx-cursor: hand;
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+}
+
+.card-link-bold {
+    -fx-font-weight: bold;
+}
+
+.card-link:hover,
+.card-link-bold:hover {
+    -fx-text-fill: #4F46E5;
+}
+
+.error-message-text {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: #EF4444;
+}
