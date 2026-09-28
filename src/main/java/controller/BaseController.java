@@ -26,7 +26,6 @@ public abstract class BaseController {
         return navigateTo(fxmlPath);
     }
 
-    // Plays a soft fade-in transition when a view/card appears
     protected void playFadeIn(Node node) {
         if (node == null) return;
         node.setOpacity(0.0);
@@ -36,7 +35,6 @@ public abstract class BaseController {
         fadeIn.play();
     }
 
-    // Plays a fast horizontal shake transition for errors/failed validation
     protected void playErrorShake(Node node) {
         if (node == null) return;
         TranslateTransition shake = new TranslateTransition(Duration.millis(50), node);
@@ -44,18 +42,14 @@ public abstract class BaseController {
         shake.setByX(8);
         shake.setCycleCount(6);
         shake.setAutoReverse(true);
-        shake.setOnFinished(e -> node.setTranslateX(0)); // Reset position
+        shake.setOnFinished(e -> node.setTranslateX(0));
         shake.play();
     }
 
-    /**
-     * Alias for playErrorShake to support existing controller calls.
-     */
     protected void triggerShakeAnimation(VBox card) {
         playErrorShake(card);
     }
 
-    // Combines fade-in and subtle slide-up when opening popups or dialogs
     protected void playSlideFadeIn(Node node) {
         if (node == null) return;
         node.setOpacity(0.0);

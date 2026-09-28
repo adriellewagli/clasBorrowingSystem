@@ -1,5 +1,6 @@
 package com.borrowclas.clasborrowingsystem;
 
+import atlantafx.base.theme.PrimerLight;
 import controller.MainLayoutController;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -11,6 +12,9 @@ public class MainApp extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
+        // Set AtlantaFX Primer Light as the default base theme for all JavaFX controls
+        Application.setUserAgentStylesheet(new PrimerLight().getUserAgentStylesheet());
+
         // Load the single master shell container
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/main_layout.fxml"));
         Scene scene = new Scene(loader.load());
@@ -27,7 +31,7 @@ public class MainApp extends Application {
         primaryStage.show();
 
         // Load initial screen into the container
-        MainLayoutController.setView("/com/borrowclas/clasborrowingsystem/fxml/login.fxml");
+        MainLayoutController.setView("/com/borrowclas/clasborrowingsystem/fxml/auth/login.fxml");
     }
 
     public static void main(String[] args) {

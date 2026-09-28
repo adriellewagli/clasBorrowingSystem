@@ -8,11 +8,11 @@
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
-<?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.SVGPath?>
 
-<BorderPane styleClass="root-container" stylesheets="@../css/styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controller.LoginController">
+<BorderPane styleClass="root-container" stylesheets="@../../css/styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controller.auth.LoginController">
 
     <!-- Top System Navigation Header -->
     <top>
@@ -40,13 +40,13 @@
     <center>
         <VBox alignment="CENTER" styleClass="main-canvas" BorderPane.alignment="CENTER">
             <children>
-                <VBox fx:id="cardContainer" maxWidth="420.0" minWidth="420.0" spacing="24.0" styleClass="login-card">
+                <VBox fx:id="cardContainer" maxWidth="420.0" minWidth="420.0" spacing="20.0" styleClass="login-card">
                     <padding>
                         <Insets bottom="32.0" left="36.0" right="36.0" top="36.0" />
                     </padding>
                     <children>
                         <!-- Card Header -->
-                        <VBox spacing="6.0">
+                        <VBox spacing="4.0">
                             <children>
                                 <Label styleClass="card-title" text="CLAS Login Form" />
                                 <Label styleClass="card-subtitle" text="Sign in to manage equipment inventory and requests" />
@@ -64,17 +64,25 @@
                                     </children>
                                 </VBox>
 
-                                <!-- Password Input -->
+                                <!-- Password Input with Eye Toggle Icon -->
                                 <VBox spacing="6.0">
                                     <children>
                                         <Label styleClass="input-label" text="Password" />
-                                        <StackPane alignment="CENTER_RIGHT">
+                                        <StackPane styleClass="password-container">
                                             <children>
+                                                <!-- Masked Field -->
                                                 <PasswordField fx:id="txtPassword" onAction="#handleLogin" promptText="••••••••" styleClass="clean-text-field, password-padding" />
+
+                                                <!-- Visible Text Field (Hidden by default) -->
                                                 <TextField fx:id="txtPasswordShown" managed="false" onAction="#handleLogin" promptText="••••••••" styleClass="clean-text-field, password-padding" visible="false" />
-                                                <Button fx:id="btnTogglePassword" focusTraversable="false" onAction="#togglePasswordVisibility" styleClass="eye-toggle-btn, eye-open" StackPane.alignment="CENTER_RIGHT">
+
+                                                <!-- Eye Icon Toggle Button -->
+                                                <Button fx:id="btnTogglePassword" focusTraversable="false" onAction="#togglePasswordVisibility" styleClass="eye-toggle-btn" StackPane.alignment="CENTER_RIGHT">
+                                                    <graphic>
+                                                        <SVGPath fx:id="svgEyeIcon" content="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" styleClass="eye-icon" />
+                                                    </graphic>
                                                     <StackPane.margin>
-                                                        <Insets right="10.0" />
+                                                        <Insets right="6.0" />
                                                     </StackPane.margin>
                                                 </Button>
                                             </children>
@@ -87,13 +95,11 @@
                         <!-- Actions & Links -->
                         <VBox spacing="16.0">
                             <children>
-                                <Button fx:id="btnLogin" maxWidth="1.7976931348623157E308" onAction="#handleLogin" styleClass="btn-lavender" text="Login" />
+                                <Button fx:id="btnLogin" maxWidth="1.7976931348623157E308" onAction="#handleLogin" styleClass="btn-primary" text="Login" />
 
-                                <HBox alignment="CENTER" styleClass="links-row">
+                                <HBox alignment="CENTER">
                                     <children>
                                         <Hyperlink onAction="#handleForgotPassword" styleClass="card-link" text="Forgot Password?" />
-                                        <Region HBox.hgrow="ALWAYS" />
-                                        <Hyperlink onAction="#handleSignUp" styleClass="card-link-bold" text="Create Account" />
                                     </children>
                                 </HBox>
                             </children>
