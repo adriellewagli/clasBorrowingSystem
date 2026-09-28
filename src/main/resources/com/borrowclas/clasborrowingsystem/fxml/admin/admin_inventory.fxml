@@ -44,17 +44,8 @@
 
         <VBox spacing="6">
             <Label text="Category:" styleClass="modal-label"/>
-            <ComboBox fx:id="comboCategory" maxWidth="Infinity" promptText="Select category">
-                <items>
-                    <fx:collections xmlns:fx="http://javafx.com/fxml/1" fx:factory="observableArrayList">
-                        <String fx:value="Laptops &amp; Computers"/>
-                        <String fx:value="Display &amp; AV"/>
-                        <String fx:value="Audio Equipment"/>
-                        <String fx:value="Photography"/>
-                        <String fx:value="Peripherals"/>
-                    </fx:collections>
-                </items>
-            </ComboBox>
+            <!-- CLEANED: No inline collection blocks -->
+            <ComboBox fx:id="comboCategory" maxWidth="Infinity" promptText="Select category"/>
         </VBox>
 
         <VBox spacing="6">

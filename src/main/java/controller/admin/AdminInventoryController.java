@@ -36,6 +36,15 @@ public class AdminInventoryController {
         setupTableColumns();
         loadInventoryData();
 
+        // Populate category dropdown programmatically
+        comboCategory.setItems(FXCollections.observableArrayList(
+                "Laptops & Computers",
+                "Display & AV",
+                "Audio Equipment",
+                "Photography",
+                "Peripherals"
+        ));
+
         // Live search filter listener
         if (txtSearch != null) {
             txtSearch.textProperty().addListener((obs, oldVal, newVal) -> applyFilter(newVal));
