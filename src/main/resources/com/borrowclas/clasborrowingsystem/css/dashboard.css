@@ -58,6 +58,15 @@
     -fx-alignment: center;
 }
 
+.status-pending {
+    -fx-background-color: #fef3c7;
+    -fx-text-fill: #d97706;
+    -fx-font-weight: bold;
+    -fx-padding: 4px 10px;
+    -fx-background-radius: 12px;
+}
+
+
 .status-available {
     -fx-background-color: #E6F4EA;
     -fx-text-fill: #137333;

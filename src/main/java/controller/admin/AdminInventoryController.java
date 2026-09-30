@@ -1,9 +1,11 @@
 package controller.admin;
 
+import controller.BaseController;
 import dao.EquipmentDAO;
 import dao.EquipmentDAOImpl;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
@@ -12,7 +14,7 @@ import model.Equipment;
 
 import java.util.List;
 
-public class AdminInventoryController {
+public class AdminInventoryController extends BaseController {
 
     @FXML private TextField txtSearch;
     @FXML private TableView<Equipment> tblInventory;
@@ -34,7 +36,7 @@ public class AdminInventoryController {
     @FXML
     public void initialize() {
         setupTableColumns();
-        loadInventoryData();
+        loadInventoryData(); // Now runs seamlessly in the background
 
         // Populate category dropdown programmatically
         comboCategory.setItems(FXCollections.observableArrayList(
@@ -77,10 +79,32 @@ public class AdminInventoryController {
     }
 
     private void loadInventoryData() {
-        inventoryList.clear();
-        List<Equipment> dbList = equipmentDAO.getAllEquipment();
-        inventoryList.addAll(dbList);
-        tblInventory.setItems(inventoryList);
+        // Offload database work to a background thread so the UI dots keep bouncing
+        Task<List<Equipment>> dbTask = new Task<>() {
+            @Override
+            protected List<Equipment> call() {
+                return equipmentDAO.getAllEquipment();
+            }
+        };
+
+        // When DB finishes, safely update the table on the main UI thread
+        dbTask.setOnSucceeded(e -> {
+            inventoryList.clear();
+            inventoryList.addAll(dbTask.getValue());
+            tblInventory.setItems(inventoryList);
+        });
+
+        dbTask.setOnFailed(e -> {
+            System.err.println("Failed to load inventory from database.");
+            if (dbTask.getException() != null) {
+                dbTask.getException().printStackTrace();
+            }
+        });
+
+        // Start the background process
+        Thread bgThread = new Thread(dbTask);
+        bgThread.setDaemon(true);
+        bgThread.start();
     }
 
     private void applyFilter(String query) {
@@ -111,7 +135,6 @@ public class AdminInventoryController {
             return;
         }
 
-        // Create new equipment object (Status defaults to AVAILABLE in DAO)
         Equipment newEq = new Equipment(name, category, serial, "AVAILABLE");
         boolean success = equipmentDAO.addEquipment(newEq);
 
@@ -120,11 +143,11 @@ public class AdminInventoryController {
             txtName.clear();
             txtSerial.clear();
             comboCategory.getSelectionModel().clearSelection();
+
+            // Reload the table data asynchronously
             loadInventoryData();
 
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Equipment added successfully!", ButtonType.OK);
-            alert.setHeaderText(null);
-            alert.showAndWait();
+            showSuccessDialog("Equipment Added", "The new item has been successfully saved to the inventory database.");
         } else {
             lblFormError.setText("Error: Serial number may already exist.");
         }

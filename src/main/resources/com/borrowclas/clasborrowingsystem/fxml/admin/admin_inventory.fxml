@@ -4,7 +4,7 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<HBox spacing="16" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controller.admin.AdminInventoryController">
+<HBox spacing="20" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controller.admin.AdminInventoryController" stylesheets="@/com/borrowclas/clasborrowingsystem/css/dashboard.css">
     <padding>
         <Insets top="20" right="20" bottom="20" left="20"/>
     </padding>
@@ -32,31 +32,34 @@
         </VBox>
     </VBox>
 
-    <!-- RIGHT SIDE: ADD NEW EQUIPMENT FORM -->
-    <VBox spacing="14" styleClass="main-dashboard-card" prefWidth="320">
+    <!-- RIGHT SIDE: ADD NEW EQUIPMENT FORM (EXPANDED & SPACIOUS) -->
+    <VBox spacing="16" styleClass="main-dashboard-card" prefWidth="360" minWidth="360">
+        <padding>
+            <Insets top="20" right="20" bottom="20" left="20"/>
+        </padding>
+
         <Label text="Add New Equipment" styleClass="modal-title"/>
         <Separator styleClass="sidebar-divider"/>
 
         <VBox spacing="6">
             <Label text="Item Name:" styleClass="modal-label"/>
-            <TextField fx:id="txtName" promptText="e.g. Sony Mirrorless Camera" styleClass="clean-search-field"/>
+            <TextField fx:id="txtName" promptText="e.g. Sony Mirrorless Camera" styleClass="clean-search-field" prefHeight="36"/>
         </VBox>
 
         <VBox spacing="6">
             <Label text="Category:" styleClass="modal-label"/>
-            <!-- CLEANED: No inline collection blocks -->
-            <ComboBox fx:id="comboCategory" maxWidth="Infinity" promptText="Select category"/>
+            <ComboBox fx:id="comboCategory" maxWidth="Infinity" promptText="Select category" prefHeight="36"/>
         </VBox>
 
         <VBox spacing="6">
             <Label text="Serial Number:" styleClass="modal-label"/>
-            <TextField fx:id="txtSerial" promptText="e.g. SN-SN-99102" styleClass="clean-search-field"/>
+            <TextField fx:id="txtSerial" promptText="e.g. SN-SN-99102" styleClass="clean-search-field" prefHeight="36"/>
         </VBox>
 
-        <Label fx:id="lblFormError" text="" styleClass="modal-error-label"/>
+        <Label fx:id="lblFormError" text="" styleClass="modal-error-label" wrapText="true"/>
 
         <Region VBox.vgrow="ALWAYS"/>
 
-        <Button text="Save to Database" styleClass="btn-primary" maxWidth="Infinity" onAction="#handleSaveEquipment"/>
+        <Button text="Save to Database" styleClass="btn-primary" maxWidth="Infinity" prefHeight="40" onAction="#handleSaveEquipment"/>
     </VBox>
 </HBox>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="20.0" styleClass="root-canvas" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.admin.MaintenanceLogController" stylesheets="@../../css/dashboard.css">
+
+    <padding>
+        <Insets bottom="24.0" left="24.0" right="24.0" top="24.0"/>
+    </padding>
+
+    <!-- HEADER & ACTION BAR -->
+    <HBox alignment="CENTER_LEFT" spacing="15">
+        <VBox HBox.hgrow="ALWAYS" spacing="2">
+            <Label text="Equipment Maintenance Log" styleClass="modal-title"/>
+            <Label text="Track damaged items, items undergoing repair, and restore them to active availability." styleClass="header-subtitle"/>
+        </VBox>
+        <Button text="🔄 Refresh Log" onAction="#handleRefresh" styleClass="btn-secondary"/>
+    </HBox>
+
+    <!-- METRIC CARDS -->
+    <HBox spacing="16">
+        <VBox styleClass="metric-card" HBox.hgrow="ALWAYS" spacing="4">
+            <Label text="Total Under Maintenance" styleClass="metric-title"/>
+            <Label fx:id="lblMaintenanceCount" text="0" styleClass="metric-value-dark"/>
+        </VBox>
+        <VBox styleClass="metric-card" HBox.hgrow="ALWAYS" spacing="4">
+            <Label text="Repair Queue Status" styleClass="metric-title"/>
+            <Label text="Active Inspection" styleClass="metric-value-blue"/>
+        </VBox>
+    </HBox>
+
+    <!-- SEARCH & TABLE CONTAINER -->
+    <VBox VBox.vgrow="ALWAYS" styleClass="main-dashboard-card" spacing="12">
+        <TextField fx:id="txtSearch" promptText="Search maintenance items by name, category, or serial..." styleClass="clean-search-field"/>
+
+        <TableView fx:id="tblMaintenance" VBox.vgrow="ALWAYS" styleClass="table-view">
+            <columns>
+                <TableColumn fx:id="colId" text="ID" prefWidth="70"/>
+                <TableColumn fx:id="colName" text="EQUIPMENT ITEM" prefWidth="220"/>
+                <TableColumn fx:id="colCategory" text="CATEGORY" prefWidth="160"/>
+                <TableColumn fx:id="colSerial" text="SERIAL NUMBER" prefWidth="150"/>
+                <TableColumn fx:id="colStatus" text="STATUS" prefWidth="130"/>
+                <TableColumn fx:id="colAction" text="ACTION" prefWidth="130"/>
+            </columns>
+            <columnResizePolicy>
+                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+            </columnResizePolicy>
+        </TableView>
+
+        <!-- FOOTER -->
+        <HBox styleClass="table-footer-bar" alignment="CENTER_LEFT">
+            <Label text="Tip: Click 'Mark as Fixed' to clear an item from maintenance and return it to the catalog." styleClass="footer-caption"/>
+        </HBox>
+    </VBox>
+</VBox>

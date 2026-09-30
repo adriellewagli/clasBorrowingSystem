@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="24.0" alignment="TOP_CENTER" styleClass="root-canvas" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.user.UserSettingsController" stylesheets="@/com/borrowclas/clasborrowingsystem/css/dashboard.css">
+
+    <padding>
+        <Insets bottom="40.0" left="40.0" right="40.0" top="40.0"/>
+    </padding>
+
+    <!-- HEADER -->
+    <VBox spacing="4" maxWidth="520">
+        <Label text="Account Settings" styleClass="modal-title"/>
+        <Label text="Update your personal profile information and academic department details." styleClass="header-subtitle"/>
+    </VBox>
+
+    <!-- CENTERED PROFILE CARD -->
+    <VBox spacing="18" styleClass="main-dashboard-card" maxWidth="520" minWidth="460">
+        <padding>
+            <Insets top="32" right="36" bottom="36" left="36"/>
+        </padding>
+
+        <Label text="Profile Information" styleClass="modal-asset-name"/>
+        <Separator styleClass="sidebar-divider"/>
+
+        <VBox spacing="6">
+            <Label text="Full Name:" styleClass="modal-label"/>
+            <TextField fx:id="txtFullName" promptText="e.g. Juan Dela Cruz" styleClass="clean-search-field" prefHeight="42"/>
+        </VBox>
+
+        <VBox spacing="6">
+            <Label text="Username / ID Number:" styleClass="modal-label"/>
+            <TextField fx:id="txtUsername" promptText="e.g. 2023-01928" styleClass="clean-search-field" prefHeight="42" editable="false"/>
+            <Label text="* Username cannot be modified directly." styleClass="footer-caption"/>
+        </VBox>
+
+        <!-- UPDATED: ComboBox for Official CLAS Programs -->
+        <VBox spacing="6">
+            <Label text="Department / Course:" styleClass="modal-label"/>
+            <ComboBox fx:id="comboDepartment" maxWidth="Infinity" promptText="Select your academic program" prefHeight="42"/>
+        </VBox>
+
+        <Label fx:id="lblMessage" text="" styleClass="modal-error-label" wrapText="true"/>
+
+        <Button text="Save Profile Changes" styleClass="btn-primary" maxWidth="Infinity" prefHeight="44" onAction="#handleSaveProfile">
+            <VBox.margin>
+                <Insets top="10"/>
+            </VBox.margin>
+        </Button>
+    </VBox>
+</VBox>

@@ -1,21 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.geometry.Insets?>
-<?import javafx.scene.control.ProgressIndicator?>
-<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.shape.Circle?>
 
-<VBox alignment="CENTER" spacing="16.0" styleClass="main-canvas" stylesheets="@../../css/styles.css" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1">
-    <padding>
-        <Insets bottom="40.0" left="40.0" right="40.0" top="40.0" />
-    </padding>
-    <children>
-        <ProgressIndicator prefHeight="48.0" prefWidth="48.0" styleClass="progress-indicator" />
-        <VBox alignment="CENTER" spacing="4.0">
-            <children>
-                <Label styleClass="card-title" text="Loading..." />
-                <Label styleClass="card-subtitle" text="Please wait while the page is preparing" />
-            </children>
-        </VBox>
-    </children>
-</VBox>
+<!-- Added stylesheets link so it inherits your global font -->
+<StackPane fx:id="overlayRoot" style="-fx-background-color: rgba(255, 255, 255, 0.85);"
+           stylesheets="@../../css/dashboard.css"
+           xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+           fx:controller="controller.dialog.LoadingOverlayController">
+
+    <VBox alignment="CENTER" spacing="16">
+
+        <!-- Modern Bouncing Dots -->
+        <HBox alignment="CENTER" spacing="8">
+            <Circle fx:id="dot1" radius="6" fill="#3b82f6"/>
+            <Circle fx:id="dot2" radius="6" fill="#3b82f6"/>
+            <Circle fx:id="dot3" radius="6" fill="#3b82f6"/>
+        </HBox>
+
+        <!-- Replaced inline fonts with your styleClass -->
+        <Label fx:id="lblLoadingText" text="Loading..." styleClass="modal-label" style="-fx-text-fill: #6b7280; -fx-font-weight: bold;"/>
+    </VBox>
+</StackPane>

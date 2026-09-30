@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="16.0" style="-fx-padding: 20; -fx-background-color: transparent;" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controller.admin.ManageRequestsController">
+    <children>
+        <!-- Header -->
+        <HBox alignment="CENTER_LEFT" spacing="12">
+            <children>
+                <VBox HBox.hgrow="ALWAYS">
+                    <children>
+                        <Label style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #0f172a;" text="Pending Borrow Requests" />
+                        <Label style="-fx-font-size: 13px; -fx-text-fill: #64748b;" text="Review student &amp; faculty borrow applications awaiting admin authorization." />
+                    </children>
+                </VBox>
+                <Button fx:id="btnRefresh" onAction="#loadRequests" styleClass="btn-secondary" text="🔄 Refresh List" />
+            </children>
+        </HBox>
+
+        <!-- Metric Summary Bar -->
+        <HBox spacing="16">
+            <children>
+                <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
+                    <children>
+                        <Label styleClass="metric-title" text="Pending Approval Count" />
+                        <Label fx:id="lblPendingCount" styleClass="metric-value-blue" text="0" />
+                    </children>
+                </VBox>
+            </children>
+        </HBox>
+
+        <!-- Search Bar -->
+        <HBox alignment="CENTER_LEFT" spacing="12">
+            <children>
+                <TextField fx:id="txtSearch" promptText="Search borrower name, equipment, or serial..." styleClass="clean-search-field" HBox.hgrow="ALWAYS" />
+            </children>
+        </HBox>
+
+        <!-- Pending Requests Table -->
+        <VBox styleClass="main-dashboard-card" VBox.vgrow="ALWAYS">
+            <children>
+                <TableView fx:id="tblRequests" VBox.vgrow="ALWAYS">
+                    <columns>
+                        <TableColumn fx:id="colTransId" prefWidth="80" text="REQ ID" />
+                        <TableColumn fx:id="colBorrower" prefWidth="160" text="BORROWER" />
+                        <TableColumn fx:id="colEquipment" prefWidth="180" text="EQUIPMENT" />
+                        <TableColumn fx:id="colSerial" prefWidth="130" text="SERIAL NO" />
+                        <TableColumn fx:id="colBorrowDate" prefWidth="110" text="REQUEST DATE" />
+                        <TableColumn fx:id="colDueDate" prefWidth="110" text="RETURN DUE" />
+                        <TableColumn fx:id="colAction" prefWidth="200" text="DECISION" />
+                    </columns>
+                    <columnResizePolicy>
+                        <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                    </columnResizePolicy>
+                </TableView>
+            </children>
+        </VBox>
+    </children>
+</VBox>

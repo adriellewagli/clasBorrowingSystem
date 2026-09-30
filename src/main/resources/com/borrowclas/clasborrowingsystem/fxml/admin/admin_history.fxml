@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="16" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.admin.AdminHistoryController">
+    <padding>
+        <Insets top="20" right="20" bottom="20" left="20"/>
+    </padding>
+
+    <!-- HEADER TITLE & METRICS -->
+    <HBox alignment="CENTER_LEFT" spacing="16">
+        <VBox spacing="2" HBox.hgrow="ALWAYS">
+            <Label text="System Transaction Audit Log" styleClass="header-title"/>
+            <Label text="Complete history of all processed borrow requests and returns" styleClass="header-subtitle"/>
+        </VBox>
+        <Button text="🔄 Refresh Log" styleClass="btn-secondary" onAction="#loadAuditLogData"/>
+    </HBox>
+
+    <!-- SEARCH ROW -->
+    <HBox alignment="CENTER_LEFT" spacing="12">
+        <TextField fx:id="txtSearch" promptText="Search by Trans ID, Borrower, Equipment, or Processor..." styleClass="clean-search-field" HBox.hgrow="ALWAYS"/>
+    </HBox>
+
+    <!-- AUDIT TABLE -->
+    <VBox styleClass="main-dashboard-card" VBox.vgrow="ALWAYS">
+        <TableView fx:id="tblAuditHistory" VBox.vgrow="ALWAYS">
+            <columns>
+                <TableColumn fx:id="colTransId" text="TRANS ID" prefWidth="90"/>
+                <TableColumn fx:id="colBorrower" text="BORROWER" prefWidth="150"/>
+                <TableColumn fx:id="colEquipment" text="EQUIPMENT" prefWidth="180"/>
+                <TableColumn fx:id="colBorrowDate" text="BORROW DATE" prefWidth="110"/>
+                <TableColumn fx:id="colDueDate" text="DUE DATE" prefWidth="110"/>
+                <TableColumn fx:id="colStatus" text="STATUS" prefWidth="110"/>
+                <TableColumn fx:id="colProcessedBy" text="PROCESSED BY" prefWidth="130"/>
+            </columns>
+            <columnResizePolicy>
+                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+            </columnResizePolicy>
+        </TableView>
+    </VBox>
+</VBox>

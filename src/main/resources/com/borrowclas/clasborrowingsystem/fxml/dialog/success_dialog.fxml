@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.StackPane?>
+
+<VBox alignment="CENTER" spacing="16" stylesheets="@/com/borrowclas/clasborrowingsystem/css/dashboard.css"
+      style="-fx-background-color: white; -fx-background-radius: 12; -fx-border-color: #e5e7eb; -fx-border-radius: 12; -fx-border-width: 1;"
+      xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.dialog.SuccessDialogController">
+
+    <padding>
+        <Insets top="30" right="40" bottom="30" left="40"/>
+    </padding>
+
+    <!-- Green Checkmark Circle -->
+    <StackPane style="-fx-background-color: #d1fae5; -fx-background-radius: 50; -fx-min-width: 60; -fx-min-height: 60; -fx-max-width: 60; -fx-max-height: 60;">
+        <Label text="✓" style="-fx-text-fill: #10b981; -fx-font-size: 32px; -fx-font-weight: bold;"/>
+    </StackPane>
+
+    <!-- Text Content -->
+    <VBox alignment="CENTER" spacing="6">
+        <Label fx:id="lblTitle" text="Success!" style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #111827;"/>
+        <Label fx:id="lblMessage" text="Action completed successfully." wrapText="true" textAlignment="CENTER" style="-fx-font-size: 14px; -fx-text-fill: #6b7280;"/>
+    </VBox>
+
+    <!-- Action Button -->
+    <Button text="Awesome" onAction="#handleClose" styleClass="btn-primary" prefWidth="140" style="-fx-font-size: 14px; -fx-padding: 8 16 8 16;">
+        <VBox.margin>
+            <Insets top="10"/>
+        </VBox.margin>
+    </Button>
+</VBox>

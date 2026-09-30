@@ -48,8 +48,10 @@
                 <Separator styleClass="sidebar-divider"/>
 
                 <Button fx:id="btnNavReturns" text="Process Returns" styleClass="sidebar-btn-active" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewReturns"/>
+                <Button fx:id="btnNavRequests" text="Manage Requests" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewRequests"/>
                 <Button fx:id="btnNavInventory" text="Manage Inventory" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewInventory"/>
                 <Button fx:id="btnNavMaintenance" text="Maintenance Log" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewMaintenance"/>
+                <Button fx:id="btnNavHistory" text="Audit History" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewHistory"/>
 
                 <Region VBox.vgrow="ALWAYS"/>
 
@@ -122,7 +124,6 @@
 
             <VBox spacing="8">
                 <Label text="Condition upon return:" styleClass="modal-label"/>
-                <!-- FIXED: Removed the inline XML population -->
                 <ComboBox fx:id="comboCondition" maxWidth="Infinity" />
             </VBox>
 

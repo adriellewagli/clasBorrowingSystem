@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="20.0" styleClass="root-canvas" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.user.RequestHistoryLogController" stylesheets="@../../css/dashboard.css">
+
+    <padding>
+        <Insets bottom="24.0" left="24.0" right="24.0" top="24.0"/>
+    </padding>
+
+    <!-- HEADER & REFRESH BAR -->
+    <HBox alignment="CENTER_LEFT" spacing="15">
+        <VBox HBox.hgrow="ALWAYS" spacing="2">
+            <Label text="Request History Log" styleClass="modal-title"/>
+            <Label text="Audit trail of all your historical borrowing requests, approvals, and returns." styleClass="header-subtitle"/>
+        </VBox>
+        <Button text="🔄 Refresh Log" onAction="#handleRefresh" styleClass="btn-secondary"/>
+    </HBox>
+
+    <!-- SEARCH & FILTER CHIPS -->
+    <HBox alignment="CENTER_LEFT" spacing="12">
+        <TextField fx:id="txtSearch" promptText="Filter by equipment name or status..." styleClass="clean-search-field" HBox.hgrow="ALWAYS"/>
+        <HBox spacing="8" alignment="CENTER_RIGHT">
+            <Button fx:id="btnFilterAll" text="All Logs" styleClass="filter-chip-active" onAction="#filterAll"/>
+            <Button fx:id="btnFilterApproved" text="Approved" styleClass="filter-chip" onAction="#filterApproved"/>
+            <Button fx:id="btnFilterPending" text="Pending" styleClass="filter-chip" onAction="#filterPending"/>
+            <Button fx:id="btnFilterReturned" text="Returned" styleClass="filter-chip" onAction="#filterReturned"/>
+        </HBox>
+    </HBox>
+
+    <!-- MAIN LOG TABLE CARD -->
+    <VBox VBox.vgrow="ALWAYS" styleClass="main-dashboard-card">
+        <TableView fx:id="tblRequestHistory" VBox.vgrow="ALWAYS" styleClass="table-view">
+            <columns>
+                <TableColumn fx:id="colReqId" text="REQ ID" prefWidth="80"/>
+                <TableColumn fx:id="colEquipment" text="EQUIPMENT ITEM" prefWidth="220"/>
+                <TableColumn fx:id="colRequestDate" text="REQUEST DATE" prefWidth="130"/>
+                <TableColumn fx:id="colTargetReturn" text="TARGET RETURN" prefWidth="130"/>
+                <TableColumn fx:id="colStatus" text="STATUS" prefWidth="140"/>
+                <TableColumn fx:id="colNotes" text="REMARKS / NOTES" prefWidth="200"/>
+            </columns>
+            <columnResizePolicy>
+                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+            </columnResizePolicy>
+        </TableView>
+
+        <!-- TABLE FOOTER BAR -->
+        <HBox styleClass="table-footer-bar" alignment="CENTER_LEFT">
+            <Label text="Showing past and current borrowing records tied to your account." styleClass="footer-caption"/>
+        </HBox>
+    </VBox>
+</VBox>

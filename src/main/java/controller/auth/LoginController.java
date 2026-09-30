@@ -99,11 +99,11 @@ public class LoginController extends BaseController {
                     // Dynamic Role-Based Routing
                     String dashboardPath;
                     if ("SUPERADMIN".equalsIgnoreCase(role)) {
-                        dashboardPath = "/com/borrowclas/clasborrowingsystem/fxml/admin/superadmin_dashboard.fxml";
+                        dashboardPath = "/com/borrowclas/clasborrowingsystem/fxml/superadmin/superadmin_dashboard.fxml";
                     } else if ("ADMIN".equalsIgnoreCase(role)) {
                         dashboardPath = "/com/borrowclas/clasborrowingsystem/fxml/admin/admin_dashboard.fxml";
                     } else {
-                        dashboardPath = "/com/borrowclas/clasborrowingsystem/fxml/users/user_dashboard.fxml";
+                        dashboardPath = "/com/borrowclas/clasborrowingsystem/fxml/user/user_dashboard.fxml";
                     }
 
                     System.out.println("[DEBUG] Navigating to: " + dashboardPath);

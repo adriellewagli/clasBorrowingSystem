@@ -10,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class EquipmentDAOImpl implements EquipmentDAO {
@@ -35,9 +36,16 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public List<Equipment> getAllEquipment() {
         List<Equipment> list = new ArrayList<>();
-        // FIX: Used SQL aliases (AS id, AS name) to match your DB to your Java code.
-        // We pass '1' for quantity since your DB doesn't have a quantity column.
-        String sql = "SELECT equipment_id AS id, item_name AS name, category, status, serial_number, 1 AS quantity FROM equipment";
+
+        String sql = "SELECT e.equipment_id AS id, e.item_name AS name, e.category, e.serial_number, " +
+                "CASE " +
+                "   WHEN t.status = 'BORROWED' THEN 'Checked Out' " +
+                "   WHEN t.status = 'PENDING' THEN 'Pending Approval' " +
+                "   WHEN e.status = 'MAINTENANCE' OR e.status = 'REPAIR' THEN 'In Maintenance' " +
+                "   ELSE 'Available' " +
+                "END AS display_status " +
+                "FROM equipment e " +
+                "LEFT JOIN transactions t ON e.equipment_id = t.equipment_id AND t.status IN ('PENDING', 'BORROWED')";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
@@ -48,10 +56,9 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                         rs.getInt("id"),
                         rs.getString("name"),
                         rs.getString("category"),
-                        // Convert DB "BORROWED" back to UI "Checked Out"
-                        rs.getString("status").equalsIgnoreCase("BORROWED") ? "Checked Out" : rs.getString("status"),
+                        rs.getString("display_status"),
                         rs.getString("serial_number"),
-                        rs.getInt("quantity")
+                        1
                 ));
             }
         } catch (SQLException e) {
@@ -65,8 +72,14 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         List<Equipment> list = new ArrayList<>();
         String sql = "SELECT equipment_id AS id, item_name AS name, category, status, serial_number, 1 AS quantity FROM equipment WHERE status = ?";
 
-        // Convert UI status "Checked Out" to DB ENUM "BORROWED"
-        String dbStatus = status.equalsIgnoreCase("Checked Out") ? "BORROWED" : status.toUpperCase();
+        String dbStatus;
+        if ("Checked Out".equalsIgnoreCase(status)) {
+            dbStatus = "BORROWED";
+        } else if ("Pending Approval".equalsIgnoreCase(status)) {
+            dbStatus = "PENDING";
+        } else {
+            dbStatus = status.toUpperCase();
+        }
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -74,11 +87,17 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             stmt.setString(1, dbStatus);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
+                    String rawStatus = rs.getString("status");
+                    String uiStatus = "Available";
+                    if ("BORROWED".equalsIgnoreCase(rawStatus)) uiStatus = "Checked Out";
+                    else if ("PENDING".equalsIgnoreCase(rawStatus)) uiStatus = "Pending Approval";
+                    else if ("MAINTENANCE".equalsIgnoreCase(rawStatus)) uiStatus = "In Maintenance";
+
                     list.add(new Equipment(
                             rs.getInt("id"),
                             rs.getString("name"),
                             rs.getString("category"),
-                            rs.getString("status").equalsIgnoreCase("BORROWED") ? "Checked Out" : rs.getString("status"),
+                            uiStatus,
                             rs.getString("serial_number"),
                             rs.getInt("quantity")
                     ));
@@ -92,11 +111,15 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
     @Override
     public boolean updateStatus(int equipmentId, String newStatus) {
-        // FIX: Match DB column 'equipment_id'
         String sql = "UPDATE equipment SET status = ? WHERE equipment_id = ?";
-
-        // Convert UI status "Checked Out" to DB ENUM "BORROWED"
-        String dbStatus = newStatus.equalsIgnoreCase("Checked Out") ? "BORROWED" : newStatus.toUpperCase();
+        String dbStatus;
+        if ("Checked Out".equalsIgnoreCase(newStatus)) {
+            dbStatus = "BORROWED";
+        } else if ("Pending Approval".equalsIgnoreCase(newStatus)) {
+            dbStatus = "PENDING";
+        } else {
+            dbStatus = newStatus.toUpperCase();
+        }
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -112,54 +135,94 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     }
 
     @Override
-    public boolean createBorrowRequest(int userId, int equipmentId, LocalDate expectedReturnDate) {
-        // FIX 1: Insert into 'transactions' table
-        // FIX 2: Matched exact transactions table columns
-        String insertSql = "INSERT INTO transactions (equipment_id, borrower_name, date_borrowed, expected_return_date, status, processed_by) " +
-                "VALUES (?, 'Current User', CURRENT_DATE, ?, 'BORROWED', ?)";
+    public boolean createBorrowRequest(int equipmentId, String borrowerName, String borrowerType,
+                                       String borrowerIdNumber, String programOrDept, LocalDate returnTargetDate,
+                                       int processedBy, double totalFeeCharged, byte[] idSnapshotBytes) {
+        return createBatchBorrowRequest(
+                Collections.singletonList(equipmentId),
+                borrowerName,
+                borrowerType,
+                borrowerIdNumber,
+                programOrDept,
+                returnTargetDate,
+                processedBy,
+                totalFeeCharged,
+                idSnapshotBytes
+        );
+    }
 
-        // FIX 3: Update target is equipment_id, setting status to DB Enum 'BORROWED'
-        String updateEqSql = "UPDATE equipment SET status = 'BORROWED' WHERE equipment_id = ?";
+    @Override
+    public boolean createBatchBorrowRequest(List<Integer> equipmentIds, String borrowerName, String borrowerType,
+                                            String borrowerIdNumber, String programOrDept, LocalDate returnTargetDate,
+                                            int processedBy, double totalFeeChargedPerItem, byte[] idSnapshotBytes) {
 
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.setAutoCommit(false); // Enable transaction handling
+        if (equipmentIds == null || equipmentIds.isEmpty()) return false;
 
-            try (PreparedStatement stmtInsert = conn.prepareStatement(insertSql);
-                 PreparedStatement stmtUpdate = conn.prepareStatement(updateEqSql)) {
+        String insertSql = "INSERT INTO transactions " +
+                "(equipment_id, borrower_name, date_borrowed, expected_return_date, status, processed_by, " +
+                "borrower_type, borrower_id_number, program_or_dept, initial_condition, daily_fee, " +
+                "late_penalty_per_day, total_fee_charged, id_snapshot) " +
+                "VALUES (?, ?, CURDATE(), ?, 'PENDING', ?, ?, ?, ?, 'Good', 20.00, 50.00, ?, ?)";
 
-                // 1. Insert Transaction record
-                stmtInsert.setInt(1, equipmentId);
-                stmtInsert.setObject(2, expectedReturnDate);
-                stmtInsert.setInt(3, userId); // Maps to 'processed_by'
-                stmtInsert.executeUpdate();
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
 
-                // 2. Update Equipment status
-                stmtUpdate.setInt(1, equipmentId);
-                stmtUpdate.executeUpdate();
+            int validUserId = (processedBy > 0) ? processedBy : 1;
 
-                // Commit both changes
+            try (PreparedStatement stmtInsert = conn.prepareStatement(insertSql)) {
+                for (int eqId : equipmentIds) {
+                    stmtInsert.setInt(1, eqId);
+                    stmtInsert.setString(2, borrowerName);
+                    stmtInsert.setDate(3, java.sql.Date.valueOf(returnTargetDate));
+                    stmtInsert.setInt(4, validUserId);
+                    stmtInsert.setString(5, borrowerType);
+                    stmtInsert.setString(6, borrowerIdNumber);
+                    stmtInsert.setString(7, programOrDept);
+                    stmtInsert.setDouble(8, totalFeeChargedPerItem);
+
+                    if (idSnapshotBytes != null && idSnapshotBytes.length > 0) {
+                        stmtInsert.setBytes(9, idSnapshotBytes);
+                    } else {
+                        stmtInsert.setNull(9, java.sql.Types.BLOB);
+                    }
+                    stmtInsert.addBatch();
+                }
+
+                stmtInsert.executeBatch();
                 conn.commit();
+                System.out.println("✅ [EquipmentDAOImpl Success] Logged PENDING transactions successfully.");
                 return true;
-
-            } catch (SQLException e) {
-                conn.rollback();
-                System.err.println("[EquipmentDAOImpl Error] Transaction failed, rolled back: " + e.getMessage());
-                return false;
             }
+
         } catch (SQLException e) {
-            System.err.println("[EquipmentDAOImpl Error] Database connection failed: " + e.getMessage());
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
+            }
+            System.err.println("❌ [EquipmentDAOImpl Error] SQL Exception: " + e.getMessage());
+            e.printStackTrace();
             return false;
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
         }
     }
 
     @Override
     public List<BorrowedItem> getActiveBorrowsForUser(int userId) {
         List<BorrowedItem> list = new ArrayList<>();
-        // Join transactions and equipment tables to get all data needed for BorrowedItem model
         String sql = "SELECT t.transaction_id, e.item_name, e.category, e.serial_number, " +
-                "t.date_borrowed, t.expected_return_date, t.status " +
+                "t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u ON t.processed_by = u.user_id " +
                 "WHERE t.processed_by = ? AND t.status = 'BORROWED'";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -168,24 +231,23 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             stmt.setInt(1, userId);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-
                     LocalDate expectedReturn = rs.getDate("expected_return_date").toLocalDate();
-
-                    // Determine UI Status based on dates
                     String uiStatus = "Active";
                     if (expectedReturn.isBefore(LocalDate.now())) {
                         uiStatus = "Overdue";
                     }
 
-                    list.add(new BorrowedItem(
-                            rs.getInt("transaction_id"), // Maps to borrowId
+                    BorrowedItem item = new BorrowedItem(
+                            rs.getInt("transaction_id"),
                             rs.getString("item_name"),
                             rs.getString("category"),
                             rs.getString("serial_number"),
                             rs.getDate("date_borrowed").toLocalDate(),
                             expectedReturn,
                             uiStatus
-                    ));
+                    );
+                    item.setProcessedBy(rs.getString("processor_username"));
+                    list.add(item);
                 }
             }
         } catch (SQLException e) {
@@ -194,15 +256,65 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         return list;
     }
 
+    @Override
+    public List<BorrowedItem> getBorrowHistoryForUser(int userId) {
+        List<BorrowedItem> list = new ArrayList<>();
+        String sql = "SELECT t.transaction_id, e.item_name, e.category, e.serial_number, " +
+                "t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
+                "FROM transactions t " +
+                "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u ON t.processed_by = u.user_id " +
+                "WHERE t.processed_by = ? " +
+                "ORDER BY t.transaction_id DESC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    LocalDate expectedReturn = rs.getDate("expected_return_date") != null
+                            ? rs.getDate("expected_return_date").toLocalDate()
+                            : LocalDate.now();
+
+                    String rawStatus = rs.getString("status");
+                    String uiStatus = "Pending";
+
+                    if ("BORROWED".equalsIgnoreCase(rawStatus)) {
+                        uiStatus = expectedReturn.isBefore(LocalDate.now()) ? "Overdue" : "Approved";
+                    } else if ("RETURNED".equalsIgnoreCase(rawStatus)) {
+                        uiStatus = "Returned";
+                    } else if ("REJECTED".equalsIgnoreCase(rawStatus)) {
+                        uiStatus = "Rejected";
+                    }
+
+                    BorrowedItem item = new BorrowedItem(
+                            rs.getInt("transaction_id"),
+                            rs.getString("item_name"),
+                            rs.getString("category"),
+                            rs.getString("serial_number"),
+                            rs.getDate("date_borrowed") != null ? rs.getDate("date_borrowed").toLocalDate() : LocalDate.now(),
+                            expectedReturn,
+                            uiStatus
+                    );
+                    item.setProcessedBy(rs.getString("processor_username"));
+                    list.add(item);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to fetch borrow history: " + e.getMessage());
+        }
+        return list;
+    }
 
     @Override
     public List<BorrowedItem> getAllActiveTransactions() {
         List<BorrowedItem> list = new ArrayList<>();
-        // Note: We use borrower_name for Admin view
         String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.serial_number, " +
-                "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status " +
+                "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u ON t.processed_by = u.user_id " +
                 "WHERE t.status = 'BORROWED'";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -216,14 +328,14 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 BorrowedItem item = new BorrowedItem(
                         rs.getInt("transaction_id"),
                         rs.getString("item_name"),
-                        rs.getString("borrower_name"), // Reusing category field to hold borrower name temporarily for the table
+                        rs.getString("borrower_name"),
                         rs.getString("serial_number"),
                         rs.getDate("date_borrowed").toLocalDate(),
                         expectedReturn,
                         uiStatus
                 );
-                // Quick hack: Storing equipment_id inside a custom field or simply adding a getter in BorrowedItem is ideal.
-                // For now, we will map borrower_name to the 'category' field in your BorrowedItem model so we don't have to break it.
+                item.setEquipmentId(rs.getInt("equipment_id"));
+                item.setProcessedBy(rs.getString("processor_username"));
                 list.add(item);
             }
         } catch (SQLException e) {
@@ -233,24 +345,179 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     }
 
     @Override
-    public boolean processReturnRequest(int transactionId, int ignoredEquipmentId) {
-        // 1. First, find out which equipment is tied to this transaction
+    public List<BorrowedItem> getPendingTransactions() {
+        List<BorrowedItem> list = new ArrayList<>();
+        String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.serial_number, e.category, " +
+                "t.borrower_name, t.borrower_type, t.borrower_id_number, t.program_or_dept, " +
+                "t.date_borrowed, t.expected_return_date, t.total_fee_charged, t.id_snapshot, u.username AS processor_username " +
+                "FROM transactions t " +
+                "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u ON t.processed_by = u.user_id " +
+                "WHERE t.status = 'PENDING' " +
+                "ORDER BY t.transaction_id ASC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                BorrowedItem item = new BorrowedItem(
+                        rs.getInt("transaction_id"),
+                        rs.getString("item_name"),
+                        rs.getString("borrower_name"),
+                        rs.getString("serial_number"),
+                        rs.getDate("date_borrowed").toLocalDate(),
+                        rs.getDate("expected_return_date").toLocalDate(),
+                        "Pending"
+                );
+                item.setEquipmentId(rs.getInt("equipment_id"));
+                item.setProcessedBy(rs.getString("processor_username"));
+                list.add(item);
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to fetch pending transactions: " + e.getMessage());
+        }
+        return list;
+    }
+
+    @Override
+    public List<BorrowedItem> getAllTransactionHistory() {
+        List<BorrowedItem> list = new ArrayList<>();
+        String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.category, e.serial_number, " +
+                "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
+                "FROM transactions t " +
+                "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u ON t.processed_by = u.user_id " +
+                "ORDER BY t.transaction_id DESC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                LocalDate expectedReturn = rs.getDate("expected_return_date") != null
+                        ? rs.getDate("expected_return_date").toLocalDate()
+                        : LocalDate.now();
+
+                String rawStatus = rs.getString("status");
+                String uiStatus = "Pending";
+                if ("BORROWED".equalsIgnoreCase(rawStatus)) {
+                    uiStatus = expectedReturn.isBefore(LocalDate.now()) ? "Overdue" : "Active";
+                } else if ("RETURNED".equalsIgnoreCase(rawStatus)) {
+                    uiStatus = "Returned";
+                } else if ("REJECTED".equalsIgnoreCase(rawStatus)) {
+                    uiStatus = "Rejected";
+                }
+
+                BorrowedItem item = new BorrowedItem(
+                        rs.getInt("transaction_id"),
+                        rs.getString("item_name"),
+                        rs.getString("borrower_name"),
+                        rs.getString("serial_number"),
+                        rs.getDate("date_borrowed") != null ? rs.getDate("date_borrowed").toLocalDate() : LocalDate.now(),
+                        expectedReturn,
+                        uiStatus
+                );
+                item.setCategory(rs.getString("category"));
+                item.setEquipmentId(rs.getInt("equipment_id"));
+                item.setProcessedBy(rs.getString("processor_username"));
+                list.add(item);
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to fetch full audit log: " + e.getMessage());
+        }
+        return list;
+    }
+
+    @Override
+    public boolean approveBorrowRequest(int transactionId, int equipmentId, int adminUserId) {
+        String updateTxSql = "UPDATE transactions SET status = 'BORROWED', processed_by = ? WHERE transaction_id = ?";
+        String updateEqSql = "UPDATE equipment SET status = 'BORROWED' WHERE equipment_id = ?";
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false); // Begin Batch Transaction
+
+            try (PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
+                 PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
+
+                stmtTx.setInt(1, adminUserId);
+                stmtTx.setInt(2, transactionId);
+                stmtTx.executeUpdate();
+
+                stmtEq.setInt(1, equipmentId);
+                stmtEq.executeUpdate();
+
+                conn.commit();
+                System.out.println("✅ [EquipmentDAOImpl Success] Approved tx ID: " + transactionId + " by Admin ID: " + adminUserId);
+                return true;
+            }
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
+            }
+            System.err.println("❌ [EquipmentDAOImpl Error] Failed to approve borrow request: " + e.getMessage());
+            return false;
+        } finally {
+            if (conn != null) {
+                try { conn.setAutoCommit(true); conn.close(); } catch (SQLException ex) { ex.printStackTrace(); }
+            }
+        }
+    }
+
+    @Override
+    public boolean rejectBorrowRequest(int transactionId, int equipmentId, int adminUserId) {
+        String updateTxSql = "UPDATE transactions SET status = 'REJECTED', processed_by = ? WHERE transaction_id = ?";
+        String updateEqSql = "UPDATE equipment SET status = 'AVAILABLE' WHERE equipment_id = ?";
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false); // Begin Batch Transaction
+
+            try (PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
+                 PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
+
+                stmtTx.setInt(1, adminUserId);
+                stmtTx.setInt(2, transactionId);
+                stmtTx.executeUpdate();
+
+                stmtEq.setInt(1, equipmentId);
+                stmtEq.executeUpdate();
+
+                conn.commit();
+                System.out.println("✅ [EquipmentDAOImpl Success] Rejected tx ID: " + transactionId + " by Admin ID: " + adminUserId);
+                return true;
+            }
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
+            }
+            System.err.println("❌ [EquipmentDAOImpl Error] Failed to reject borrow request: " + e.getMessage());
+            return false;
+        } finally {
+            if (conn != null) {
+                try { conn.setAutoCommit(true); conn.close(); } catch (SQLException ex) { ex.printStackTrace(); }
+            }
+        }
+    }
+
+    @Override
+    public boolean processReturnRequest(int transactionId, int ignoredEquipmentId, int adminUserId) {
         String getEqIdSql = "SELECT equipment_id FROM transactions WHERE transaction_id = ?";
-
-        // 2. Mark the transaction as returned
-        String updateTxSql = "UPDATE transactions SET status = 'RETURNED', actual_return_date = CURRENT_DATE WHERE transaction_id = ?";
-
-        // 3. Mark the equipment as available
+        String updateTxSql = "UPDATE transactions SET status = 'RETURNED', actual_return_date = CURRENT_DATE, processed_by = ? WHERE transaction_id = ?";
         String updateEqSql = "UPDATE equipment SET status = 'AVAILABLE' WHERE equipment_id = ?";
 
         try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.setAutoCommit(false); // Enable transaction block
+            conn.setAutoCommit(false);
 
             try (PreparedStatement stmtGet = conn.prepareStatement(getEqIdSql);
                  PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
                  PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
 
-                // Step 1: Find the equipment_id
                 stmtGet.setInt(1, transactionId);
                 ResultSet rs = stmtGet.executeQuery();
 
@@ -261,11 +528,10 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 }
                 int actualEquipmentId = rs.getInt("equipment_id");
 
-                // Step 2: Update the transaction
-                stmtTx.setInt(1, transactionId);
+                stmtTx.setInt(1, adminUserId);
+                stmtTx.setInt(2, transactionId);
                 stmtTx.executeUpdate();
 
-                // Step 3: Update the equipment
                 stmtEq.setInt(1, actualEquipmentId);
                 stmtEq.executeUpdate();
 

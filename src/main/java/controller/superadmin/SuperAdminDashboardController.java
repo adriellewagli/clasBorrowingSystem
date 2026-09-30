@@ -1,4 +1,4 @@
-package controller.admin;
+package controller.superadmin;
 
 public class SuperAdminDashboardController {
 }
