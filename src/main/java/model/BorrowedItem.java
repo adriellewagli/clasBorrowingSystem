@@ -7,6 +7,7 @@ public class BorrowedItem {
     private int equipmentId; // Added for equipment state management
     private String equipmentName;
     private String category;
+    private String borrowerName; // Explicit field for borrower name
     private String serialNumber;
     private LocalDate borrowDate;
     private LocalDate dueDate;
@@ -44,6 +45,11 @@ public class BorrowedItem {
 
     public String getCategory() { return category; }
     public void setCategory(String category) { this.category = category; }
+
+    public String getBorrowerName() {
+        return (borrowerName != null && !borrowerName.isBlank()) ? borrowerName : "N/A";
+    }
+    public void setBorrowerName(String borrowerName) { this.borrowerName = borrowerName; }
 
     public String getSerialNumber() { return serialNumber; }
     public void setSerialNumber(String serialNumber) { this.serialNumber = serialNumber; }

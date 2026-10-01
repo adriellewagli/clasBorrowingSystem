@@ -218,7 +218,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public List<BorrowedItem> getActiveBorrowsForUser(int userId) {
         List<BorrowedItem> list = new ArrayList<>();
-        String sql = "SELECT t.transaction_id, e.item_name, e.category, e.serial_number, " +
+        String sql = "SELECT t.transaction_id, e.item_name, e.category, e.serial_number, t.borrower_name, " +
                 "t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
@@ -246,6 +246,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                             expectedReturn,
                             uiStatus
                     );
+                    item.setBorrowerName(rs.getString("borrower_name"));
                     item.setProcessedBy(rs.getString("processor_username"));
                     list.add(item);
                 }
@@ -259,7 +260,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public List<BorrowedItem> getBorrowHistoryForUser(int userId) {
         List<BorrowedItem> list = new ArrayList<>();
-        String sql = "SELECT t.transaction_id, e.item_name, e.category, e.serial_number, " +
+        String sql = "SELECT t.transaction_id, e.item_name, e.category, e.serial_number, t.borrower_name, " +
                 "t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
@@ -297,6 +298,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                             expectedReturn,
                             uiStatus
                     );
+                    item.setBorrowerName(rs.getString("borrower_name"));
                     item.setProcessedBy(rs.getString("processor_username"));
                     list.add(item);
                 }
@@ -310,7 +312,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public List<BorrowedItem> getAllActiveTransactions() {
         List<BorrowedItem> list = new ArrayList<>();
-        String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.serial_number, " +
+        String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.category, e.serial_number, " +
                 "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
@@ -328,13 +330,14 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 BorrowedItem item = new BorrowedItem(
                         rs.getInt("transaction_id"),
                         rs.getString("item_name"),
-                        rs.getString("borrower_name"),
+                        rs.getString("category"),
                         rs.getString("serial_number"),
                         rs.getDate("date_borrowed").toLocalDate(),
                         expectedReturn,
                         uiStatus
                 );
                 item.setEquipmentId(rs.getInt("equipment_id"));
+                item.setBorrowerName(rs.getString("borrower_name"));
                 item.setProcessedBy(rs.getString("processor_username"));
                 list.add(item);
             }
@@ -364,13 +367,14 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 BorrowedItem item = new BorrowedItem(
                         rs.getInt("transaction_id"),
                         rs.getString("item_name"),
-                        rs.getString("borrower_name"),
+                        rs.getString("category"),
                         rs.getString("serial_number"),
                         rs.getDate("date_borrowed").toLocalDate(),
                         rs.getDate("expected_return_date").toLocalDate(),
                         "Pending"
                 );
                 item.setEquipmentId(rs.getInt("equipment_id"));
+                item.setBorrowerName(rs.getString("borrower_name"));
                 item.setProcessedBy(rs.getString("processor_username"));
                 list.add(item);
             }
@@ -411,15 +415,15 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
                 BorrowedItem item = new BorrowedItem(
                         rs.getInt("transaction_id"),
+                        rs.getInt("equipment_id"),
                         rs.getString("item_name"),
-                        rs.getString("borrower_name"),
+                        rs.getString("category"),
                         rs.getString("serial_number"),
                         rs.getDate("date_borrowed") != null ? rs.getDate("date_borrowed").toLocalDate() : LocalDate.now(),
                         expectedReturn,
                         uiStatus
                 );
-                item.setCategory(rs.getString("category"));
-                item.setEquipmentId(rs.getInt("equipment_id"));
+                item.setBorrowerName(rs.getString("borrower_name"));
                 item.setProcessedBy(rs.getString("processor_username"));
                 list.add(item);
             }

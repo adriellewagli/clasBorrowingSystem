@@ -38,7 +38,7 @@ public class AdminHistoryController extends BaseController {
 
     private void setupTableColumns() {
         colTransId.setCellValueFactory(new PropertyValueFactory<>("borrowId"));
-        colBorrower.setCellValueFactory(new PropertyValueFactory<>("category")); // Maps to borrower_name or category
+        colBorrower.setCellValueFactory(new PropertyValueFactory<>("borrowerName")); // Bound to borrowerName
         colEquipment.setCellValueFactory(new PropertyValueFactory<>("equipmentName"));
         colBorrowDate.setCellValueFactory(new PropertyValueFactory<>("borrowDate"));
         colDueDate.setCellValueFactory(new PropertyValueFactory<>("dueDate"));
@@ -82,6 +82,7 @@ public class AdminHistoryController extends BaseController {
 
                 String filter = newValue.toLowerCase().trim();
                 if (String.valueOf(item.getBorrowId()).contains(filter)) return true;
+                if (item.getBorrowerName() != null && item.getBorrowerName().toLowerCase().contains(filter)) return true;
                 if (item.getEquipmentName() != null && item.getEquipmentName().toLowerCase().contains(filter)) return true;
                 if (item.getCategory() != null && item.getCategory().toLowerCase().contains(filter)) return true;
                 if (item.getProcessedBy() != null && item.getProcessedBy().toLowerCase().contains(filter)) return true;

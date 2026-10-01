@@ -18,14 +18,15 @@ import java.util.List;
 public class ManageRequestsController extends BaseController {
 
     @FXML private TextField txtSearch;
+    @FXML private Label lblPendingCount;
     @FXML private TableView<BorrowedItem> tblRequests;
     @FXML private TableColumn<BorrowedItem, Integer> colTransId;
     @FXML private TableColumn<BorrowedItem, String> colBorrower;
     @FXML private TableColumn<BorrowedItem, String> colEquipment;
+    @FXML private TableColumn<BorrowedItem, String> colSerial;
     @FXML private TableColumn<BorrowedItem, LocalDate> colBorrowDate;
     @FXML private TableColumn<BorrowedItem, LocalDate> colDueDate;
-    @FXML private TableColumn<BorrowedItem, String> colStatus;
-    @FXML private TableColumn<BorrowedItem, Void> colActions;
+    @FXML private TableColumn<BorrowedItem, Void> colAction;
 
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<BorrowedItem> pendingList = FXCollections.observableArrayList();
@@ -33,19 +34,19 @@ public class ManageRequestsController extends BaseController {
     @FXML
     public void initialize() {
         setupTableColumns();
-        loadPendingRequests();
+        loadRequests();
         setupSearchFilter();
     }
 
     private void setupTableColumns() {
         colTransId.setCellValueFactory(new PropertyValueFactory<>("borrowId"));
-        colBorrower.setCellValueFactory(new PropertyValueFactory<>("category")); // Stores borrower name or dept
+        colBorrower.setCellValueFactory(new PropertyValueFactory<>("category")); // Maps to borrower name or dept
         colEquipment.setCellValueFactory(new PropertyValueFactory<>("equipmentName"));
+        colSerial.setCellValueFactory(new PropertyValueFactory<>("serialNumber"));
         colBorrowDate.setCellValueFactory(new PropertyValueFactory<>("borrowDate"));
         colDueDate.setCellValueFactory(new PropertyValueFactory<>("dueDate"));
-        colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
 
-        colActions.setCellFactory(param -> new TableCell<>() {
+        colAction.setCellFactory(param -> new TableCell<>() {
             private final Button btnApprove = new Button("Approve");
             private final Button btnReject = new Button("Reject");
             private final javafx.scene.layout.HBox container = new javafx.scene.layout.HBox(8, btnApprove, btnReject);
@@ -74,11 +75,18 @@ public class ManageRequestsController extends BaseController {
     }
 
     @FXML
-    public void loadPendingRequests() {
+    public void loadRequests() {
         pendingList.clear();
         List<BorrowedItem> dbList = equipmentDAO.getPendingTransactions();
         pendingList.addAll(dbList);
-        tblRequests.setItems(pendingList);
+
+        if (tblRequests != null) {
+            tblRequests.setItems(pendingList);
+        }
+
+        if (lblPendingCount != null) {
+            lblPendingCount.setText(String.valueOf(pendingList.size()));
+        }
     }
 
     private void processApproval(BorrowedItem item) {
@@ -88,7 +96,7 @@ public class ManageRequestsController extends BaseController {
         boolean success = equipmentDAO.approveBorrowRequest(item.getBorrowId(), item.getEquipmentId(), currentAdminId);
 
         if (success) {
-            loadPendingRequests();
+            loadRequests();
         }
     }
 
@@ -99,7 +107,7 @@ public class ManageRequestsController extends BaseController {
         boolean success = equipmentDAO.rejectBorrowRequest(item.getBorrowId(), item.getEquipmentId(), currentAdminId);
 
         if (success) {
-            loadPendingRequests();
+            loadRequests();
         }
     }
 
@@ -113,6 +121,7 @@ public class ManageRequestsController extends BaseController {
                 String filter = newValue.toLowerCase().trim();
                 if (String.valueOf(item.getBorrowId()).contains(filter)) return true;
                 if (item.getEquipmentName() != null && item.getEquipmentName().toLowerCase().contains(filter)) return true;
+                if (item.getSerialNumber() != null && item.getSerialNumber().toLowerCase().contains(filter)) return true;
                 return item.getCategory() != null && item.getCategory().toLowerCase().contains(filter);
             });
         });
