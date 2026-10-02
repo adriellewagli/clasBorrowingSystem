@@ -137,7 +137,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public boolean createBorrowRequest(int equipmentId, String borrowerName, String borrowerType,
                                        String borrowerIdNumber, String programOrDept, LocalDate returnTargetDate,
-                                       int processedBy, double totalFeeCharged, byte[] idSnapshotBytes) {
+                                       int requestedByUserId, double totalFeeCharged, byte[] idSnapshotBytes) {
         return createBatchBorrowRequest(
                 Collections.singletonList(equipmentId),
                 borrowerName,
@@ -145,7 +145,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 borrowerIdNumber,
                 programOrDept,
                 returnTargetDate,
-                processedBy,
+                requestedByUserId,
                 totalFeeCharged,
                 idSnapshotBytes
         );
@@ -154,45 +154,47 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public boolean createBatchBorrowRequest(List<Integer> equipmentIds, String borrowerName, String borrowerType,
                                             String borrowerIdNumber, String programOrDept, LocalDate returnTargetDate,
-                                            int processedBy, double totalFeeChargedPerItem, byte[] idSnapshotBytes) {
+                                            int requestedByUserId, double totalFeeChargedPerItem, byte[] idSnapshotBytes) {
 
         if (equipmentIds == null || equipmentIds.isEmpty()) return false;
 
+        // Set initial processed_by to validUserId so MySQL won't fail if column is NOT NULL
         String insertSql = "INSERT INTO transactions " +
-                "(equipment_id, borrower_name, date_borrowed, expected_return_date, status, processed_by, " +
+                "(equipment_id, requested_by, borrower_name, date_borrowed, expected_return_date, status, processed_by, " +
                 "borrower_type, borrower_id_number, program_or_dept, initial_condition, daily_fee, " +
                 "late_penalty_per_day, total_fee_charged, id_snapshot) " +
-                "VALUES (?, ?, CURDATE(), ?, 'PENDING', ?, ?, ?, ?, 'Good', 20.00, 50.00, ?, ?)";
+                "VALUES (?, ?, ?, CURDATE(), ?, 'PENDING', ?, ?, ?, ?, 'Good', 20.00, 50.00, ?, ?)";
 
         Connection conn = null;
         try {
             conn = DatabaseConnection.getConnection();
             conn.setAutoCommit(false);
 
-            int validUserId = (processedBy > 0) ? processedBy : 1;
+            int validUserId = (requestedByUserId > 0) ? requestedByUserId : 1;
 
             try (PreparedStatement stmtInsert = conn.prepareStatement(insertSql)) {
                 for (int eqId : equipmentIds) {
                     stmtInsert.setInt(1, eqId);
-                    stmtInsert.setString(2, borrowerName);
-                    stmtInsert.setDate(3, java.sql.Date.valueOf(returnTargetDate));
-                    stmtInsert.setInt(4, validUserId);
-                    stmtInsert.setString(5, borrowerType);
-                    stmtInsert.setString(6, borrowerIdNumber);
-                    stmtInsert.setString(7, programOrDept);
-                    stmtInsert.setDouble(8, totalFeeChargedPerItem);
+                    stmtInsert.setInt(2, validUserId); // requested_by
+                    stmtInsert.setString(3, borrowerName);
+                    stmtInsert.setDate(4, java.sql.Date.valueOf(returnTargetDate));
+                    stmtInsert.setInt(5, validUserId); // processed_by (initial default to avoid NOT NULL violation)
+                    stmtInsert.setString(6, borrowerType);
+                    stmtInsert.setString(7, borrowerIdNumber);
+                    stmtInsert.setString(8, programOrDept);
+                    stmtInsert.setDouble(9, totalFeeChargedPerItem);
 
                     if (idSnapshotBytes != null && idSnapshotBytes.length > 0) {
-                        stmtInsert.setBytes(9, idSnapshotBytes);
+                        stmtInsert.setBytes(10, idSnapshotBytes);
                     } else {
-                        stmtInsert.setNull(9, java.sql.Types.BLOB);
+                        stmtInsert.setNull(10, java.sql.Types.BLOB);
                     }
                     stmtInsert.addBatch();
                 }
 
                 stmtInsert.executeBatch();
                 conn.commit();
-                System.out.println("✅ [EquipmentDAOImpl Success] Logged PENDING transactions successfully.");
+                System.out.println("✅ [EquipmentDAOImpl Success] Logged PENDING transactions for requested_by: " + validUserId);
                 return true;
             }
 
@@ -218,12 +220,14 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public List<BorrowedItem> getActiveBorrowsForUser(int userId) {
         List<BorrowedItem> list = new ArrayList<>();
-        String sql = "SELECT t.transaction_id, e.item_name, e.category, e.serial_number, t.borrower_name, " +
-                "t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
+
+        // Filters strictly on t.requested_by so items stay visible regardless of who approved them
+        String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.category, e.serial_number, " +
+                "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status " +
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
-                "LEFT JOIN users u ON t.processed_by = u.user_id " +
-                "WHERE t.processed_by = ? AND t.status = 'BORROWED'";
+                "WHERE t.requested_by = ? " +
+                "AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -231,28 +235,33 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             stmt.setInt(1, userId);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    LocalDate expectedReturn = rs.getDate("expected_return_date").toLocalDate();
+                    LocalDate expectedReturn = rs.getDate("expected_return_date") != null
+                            ? rs.getDate("expected_return_date").toLocalDate()
+                            : LocalDate.now();
+
+                    String rawStatus = rs.getString("status");
                     String uiStatus = "Active";
-                    if (expectedReturn.isBefore(LocalDate.now())) {
-                        uiStatus = "Overdue";
+                    if ("BORROWED".equalsIgnoreCase(rawStatus)) {
+                        uiStatus = expectedReturn.isBefore(LocalDate.now()) ? "Overdue" : "Active";
                     }
 
                     BorrowedItem item = new BorrowedItem(
                             rs.getInt("transaction_id"),
+                            rs.getInt("equipment_id"),
                             rs.getString("item_name"),
                             rs.getString("category"),
                             rs.getString("serial_number"),
-                            rs.getDate("date_borrowed").toLocalDate(),
+                            rs.getDate("date_borrowed") != null ? rs.getDate("date_borrowed").toLocalDate() : LocalDate.now(),
                             expectedReturn,
                             uiStatus
                     );
                     item.setBorrowerName(rs.getString("borrower_name"));
-                    item.setProcessedBy(rs.getString("processor_username"));
                     list.add(item);
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[EquipmentDAOImpl Error] Failed to fetch active borrows: " + e.getMessage());
+            System.err.println("[EquipmentDAOImpl Error] Failed to load active borrows for requested_by user " + userId + ": " + e.getMessage());
+            e.printStackTrace();
         }
         return list;
     }
@@ -265,7 +274,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
                 "LEFT JOIN users u ON t.processed_by = u.user_id " +
-                "WHERE t.processed_by = ? " +
+                "WHERE t.requested_by = ? " +
                 "ORDER BY t.transaction_id DESC";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -313,36 +322,50 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     public List<BorrowedItem> getAllActiveTransactions() {
         List<BorrowedItem> list = new ArrayList<>();
         String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.category, e.serial_number, " +
-                "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status, u.username AS processor_username " +
+                "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status, " +
+                "u_req.username AS requester_username, " +
+                "u_proc.username AS processor_username " +
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
-                "LEFT JOIN users u ON t.processed_by = u.user_id " +
-                "WHERE t.status = 'BORROWED'";
+                "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
+                "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id " +
+                "WHERE UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
-                LocalDate expectedReturn = rs.getDate("expected_return_date").toLocalDate();
+                LocalDate expectedReturn = rs.getDate("expected_return_date") != null
+                        ? rs.getDate("expected_return_date").toLocalDate()
+                        : LocalDate.now();
                 String uiStatus = expectedReturn.isBefore(LocalDate.now()) ? "Overdue" : "Active";
 
                 BorrowedItem item = new BorrowedItem(
                         rs.getInt("transaction_id"),
+                        rs.getInt("equipment_id"),
                         rs.getString("item_name"),
                         rs.getString("category"),
                         rs.getString("serial_number"),
-                        rs.getDate("date_borrowed").toLocalDate(),
+                        rs.getDate("date_borrowed") != null ? rs.getDate("date_borrowed").toLocalDate() : LocalDate.now(),
                         expectedReturn,
                         uiStatus
                 );
-                item.setEquipmentId(rs.getInt("equipment_id"));
                 item.setBorrowerName(rs.getString("borrower_name"));
-                item.setProcessedBy(rs.getString("processor_username"));
+
+                // Set who requested the borrowing
+                String reqUser = rs.getString("requester_username");
+                item.setRequestedBy(reqUser != null ? reqUser : "N/A");
+
+                // Set who approved/processed it
+                String procUser = rs.getString("processor_username");
+                item.setProcessedBy(procUser != null ? procUser : "Pending");
+
                 list.add(item);
             }
         } catch (SQLException e) {
             System.err.println("[EquipmentDAOImpl Error] Failed to fetch all active transactions: " + e.getMessage());
+            e.printStackTrace();
         }
         return list;
     }
@@ -441,7 +464,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         Connection conn = null;
         try {
             conn = DatabaseConnection.getConnection();
-            conn.setAutoCommit(false); // Begin Batch Transaction
+            conn.setAutoCommit(false);
 
             try (PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
                  PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
@@ -479,7 +502,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         Connection conn = null;
         try {
             conn = DatabaseConnection.getConnection();
-            conn.setAutoCommit(false); // Begin Batch Transaction
+            conn.setAutoCommit(false);
 
             try (PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
                  PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {

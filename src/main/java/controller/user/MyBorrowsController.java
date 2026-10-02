@@ -15,13 +15,15 @@ import model.UserSession;
 import java.time.LocalDate;
 import java.util.List;
 
-// EXTENDS BASECONTROLLER NOW
 public class MyBorrowsController extends BaseController {
 
     @FXML private TableView<BorrowedItem> tblActiveBorrows;
     @FXML private TableColumn<BorrowedItem, Integer> colBorrowId;
     @FXML private TableColumn<BorrowedItem, String> colEquipmentName;
     @FXML private TableColumn<BorrowedItem, String> colSerialNumber;
+    @FXML private TableColumn<BorrowedItem, String> colBorrower;
+    @FXML private TableColumn<BorrowedItem, String> colRequestedBy;
+    @FXML private TableColumn<BorrowedItem, String> colProcessedBy;
     @FXML private TableColumn<BorrowedItem, LocalDate> colBorrowDate;
     @FXML private TableColumn<BorrowedItem, LocalDate> colDueDate;
     @FXML private TableColumn<BorrowedItem, String> colStatus;
@@ -44,9 +46,16 @@ public class MyBorrowsController extends BaseController {
         colBorrowId.setCellValueFactory(new PropertyValueFactory<>("borrowId"));
         colEquipmentName.setCellValueFactory(new PropertyValueFactory<>("equipmentName"));
         colSerialNumber.setCellValueFactory(new PropertyValueFactory<>("serialNumber"));
+        colBorrower.setCellValueFactory(new PropertyValueFactory<>("borrowerName"));
+        colRequestedBy.setCellValueFactory(new PropertyValueFactory<>("requestedBy"));
+        colProcessedBy.setCellValueFactory(new PropertyValueFactory<>("processedBy"));
         colBorrowDate.setCellValueFactory(new PropertyValueFactory<>("borrowDate"));
         colDueDate.setCellValueFactory(new PropertyValueFactory<>("dueDate"));
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
+
+        if (tblActiveBorrows != null) {
+            tblActiveBorrows.getColumns().forEach(col -> col.setReorderable(false));
+        }
 
         colStatus.setCellFactory(column -> new TableCell<BorrowedItem, String>() {
             @Override
@@ -59,7 +68,7 @@ public class MyBorrowsController extends BaseController {
                     Label badge = new Label(item.toUpperCase());
                     badge.getStyleClass().add("status-badge");
 
-                    if (item.equalsIgnoreCase("Active")) {
+                    if (item.equalsIgnoreCase("Active") || item.equalsIgnoreCase("Approved") || item.equalsIgnoreCase("Checked Out")) {
                         badge.getStyleClass().add("status-checked-out");
                     } else if (item.equalsIgnoreCase("Overdue")) {
                         badge.getStyleClass().add("status-maintenance");
@@ -67,16 +76,17 @@ public class MyBorrowsController extends BaseController {
                         badge.getStyleClass().add("status-default");
                     }
                     setGraphic(badge);
+                    setText(null);
                 }
             }
         });
 
         colAction.setCellFactory(param -> new TableCell<>() {
-            private final Button btnReturn = new Button("Return");
+            private final Button btnProcessReturn = new Button("Process Return");
 
             {
-                btnReturn.getStyleClass().add("btn-primary");
-                btnReturn.setOnAction(event -> {
+                btnProcessReturn.getStyleClass().add("btn-primary");
+                btnProcessReturn.setOnAction(event -> {
                     BorrowedItem item = getTableView().getItems().get(getIndex());
                     handleReturnRequest(item);
                 });
@@ -88,10 +98,11 @@ public class MyBorrowsController extends BaseController {
                 if (empty) {
                     setGraphic(null);
                 } else {
-                    if ("Pending Return".equals(getTableView().getItems().get(getIndex()).getStatus())) {
+                    BorrowedItem currentItem = getTableView().getItems().get(getIndex());
+                    if ("Pending Return".equalsIgnoreCase(currentItem.getStatus())) {
                         setGraphic(null);
                     } else {
-                        setGraphic(btnReturn);
+                        setGraphic(btnProcessReturn);
                     }
                 }
             }
@@ -100,13 +111,15 @@ public class MyBorrowsController extends BaseController {
 
     private void loadEquipmentData() {
         activeBorrowsList.clear();
-        int currentUserId = 1;
 
-        List<BorrowedItem> dbBorrows = equipmentDAO.getActiveBorrowsForUser(currentUserId);
-        activeBorrowsList.addAll(dbBorrows);
+        List<BorrowedItem> dbBorrows = equipmentDAO.getAllActiveTransactions();
+        if (dbBorrows != null) {
+            activeBorrowsList.addAll(dbBorrows);
+        }
 
         if (tblActiveBorrows != null) {
             tblActiveBorrows.setItems(activeBorrowsList);
+            tblActiveBorrows.refresh();
         }
 
         updateSummaryMetrics();
@@ -115,7 +128,7 @@ public class MyBorrowsController extends BaseController {
     private void updateSummaryMetrics() {
         int activeCount = activeBorrowsList.size();
         long overdueCount = activeBorrowsList.stream()
-                .filter(i -> i.getStatus().equalsIgnoreCase("Overdue"))
+                .filter(i -> i.getStatus() != null && i.getStatus().equalsIgnoreCase("Overdue"))
                 .count();
 
         double totalLateFees = overdueCount * 50.00;
@@ -126,12 +139,19 @@ public class MyBorrowsController extends BaseController {
     }
 
     private void handleReturnRequest(BorrowedItem item) {
-        item.setStatus("Pending Return");
-        tblActiveBorrows.refresh();
-        updateSummaryMetrics();
+        if (item == null) return;
 
-        // REPLACED CLUNKY ALERT WITH SLEEK CUSTOM DIALOG
-        showSuccessDialog("Return Initiated", "Request for '" + item.getEquipmentName() + "' submitted. Please present the item to the admin desk.");
+        UserSession session = UserSession.getInstance();
+        int userId = (session != null && session.getUserId() > 0) ? session.getUserId() : 1;
+
+        boolean success = equipmentDAO.processReturnRequest(item.getBorrowId(), 0, userId);
+
+        if (success) {
+            showSuccessDialog("Return Processed", "Return for '" + item.getEquipmentName() + "' has been logged successfully.");
+            loadEquipmentData();
+        } else {
+            showErrorDialog("Return Error", "Could not process return. Please try again.");
+        }
     }
 
     @FXML

@@ -161,7 +161,6 @@ public class UserDashboardController extends BaseController {
             refreshHeaderProfile();
         }
 
-        // Set initial active sidebar button
         currentActiveButton = btnNavCatalog;
 
         if (dpReturnTarget != null) {
@@ -221,12 +220,10 @@ public class UserDashboardController extends BaseController {
             });
         }
 
-        // Disable Column Dragging across all columns
         if (tblEquipment != null) {
             tblEquipment.getColumns().forEach(col -> col.setReorderable(false));
         }
 
-        // Real-Time Queue Listener
         queuedCartList.addListener((ListChangeListener<Equipment>) change -> {
             updateCartSidebarBadge();
             if (tblEquipment != null) {
@@ -234,7 +231,6 @@ public class UserDashboardController extends BaseController {
             }
         });
 
-        // Action Column: Fixed Cell Rendering
         if (colAction != null) {
             colAction.setCellValueFactory(param -> new javafx.beans.property.SimpleObjectProperty<>(param.getValue()));
             colAction.setCellFactory(param -> new TableCell<Equipment, Equipment>() {
@@ -331,7 +327,7 @@ public class UserDashboardController extends BaseController {
             applySearchFilter(txtSearch.getText());
         } else {
             if (tblEquipment != null) {
-                tblEquipment.setItems(null); // Force invalidate internal JavaFX cell cache
+                tblEquipment.setItems(null);
                 tblEquipment.setItems(masterEquipmentList);
                 tblEquipment.refresh();
             }
@@ -446,8 +442,6 @@ public class UserDashboardController extends BaseController {
         }
     }
 
-    // --- NAVIGATION HANDLERS WITH ACTIVE VIEW CHECK & SPAM LOCK ---
-
     @FXML
     private void handleViewCatalog(ActionEvent event) {
         if (isNavigating || currentActiveButton == btnNavCatalog) return;
@@ -522,20 +516,17 @@ public class UserDashboardController extends BaseController {
         }
     }
 
-    /**
-     * Safely switches dynamic views while locking navigation buttons until the transition completes.
-     */
     private void switchViewWithLock(Node targetView) {
         if (dynamicContentArea == null || targetView == null) return;
 
-        isNavigating = true; // Engage Navigation Lock
+        isNavigating = true;
 
         dynamicContentArea.getChildren().setAll(targetView);
 
         FadeTransition fade = new FadeTransition(Duration.millis(200), targetView);
         fade.setFromValue(0.3);
         fade.setToValue(1.0);
-        fade.setOnFinished(e -> isNavigating = false); // Release Lock
+        fade.setOnFinished(e -> isNavigating = false);
         fade.play();
     }
 
