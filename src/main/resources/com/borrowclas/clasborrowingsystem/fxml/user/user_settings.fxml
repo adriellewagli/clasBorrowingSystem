@@ -4,51 +4,49 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<VBox spacing="24.0" alignment="TOP_CENTER" styleClass="root-canvas" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+<VBox spacing="22" alignment="TOP_CENTER" styleClass="root-canvas" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="controller.user.UserSettingsController" stylesheets="@/com/borrowclas/clasborrowingsystem/css/dashboard.css">
 
     <padding>
-        <Insets bottom="40.0" left="40.0" right="40.0" top="40.0"/>
+        <Insets bottom="40" left="40" right="40" top="40"/>
     </padding>
 
     <!-- HEADER -->
     <VBox spacing="4" maxWidth="520">
-        <Label text="Account Settings" styleClass="modal-title"/>
-        <Label text="Update your personal profile information and academic department details." styleClass="header-subtitle"/>
+        <Label text="Account Settings" styleClass="page-title"/>
+        <Label text="Update your personal profile information and academic department details." styleClass="page-subtitle" wrapText="true"/>
     </VBox>
 
-    <!-- CENTERED PROFILE CARD -->
-    <VBox spacing="18" styleClass="main-dashboard-card" maxWidth="520" minWidth="460">
+    <!-- PROFILE CARD -->
+    <VBox spacing="18" styleClass="main-dashboard-card" maxWidth="520" minWidth="460" maxHeight="-Infinity">
         <padding>
-            <Insets top="32" right="36" bottom="36" left="36"/>
+            <Insets top="28" right="32" bottom="32" left="32"/>
         </padding>
 
-        <Label text="Profile Information" styleClass="modal-asset-name"/>
+        <VBox spacing="3">
+            <Label text="Profile Information" styleClass="section-title"/>
+            <Label text="This is how you appear across the portal." styleClass="page-subtitle"/>
+        </VBox>
         <Separator styleClass="sidebar-divider"/>
 
         <VBox spacing="6">
-            <Label text="Full Name:" styleClass="modal-label"/>
-            <TextField fx:id="txtFullName" promptText="e.g. Juan Dela Cruz" styleClass="clean-search-field" prefHeight="42"/>
+            <Label text="Full Name" styleClass="modal-label"/>
+            <TextField fx:id="txtFullName" promptText="e.g. Juan Dela Cruz" styleClass="clean-search-field"/>
         </VBox>
 
         <VBox spacing="6">
-            <Label text="Username / ID Number:" styleClass="modal-label"/>
-            <TextField fx:id="txtUsername" promptText="e.g. 2023-01928" styleClass="clean-search-field" prefHeight="42" editable="false"/>
-            <Label text="* Username cannot be modified directly." styleClass="footer-caption"/>
+            <Label text="Username / ID Number" styleClass="modal-label"/>
+            <TextField fx:id="txtUsername" promptText="e.g. 2023-01928" styleClass="clean-search-field" editable="false"/>
+            <Label text="Username cannot be changed." styleClass="footer-caption"/>
         </VBox>
 
-        <!-- UPDATED: ComboBox for Official CLAS Programs -->
         <VBox spacing="6">
-            <Label text="Department / Course:" styleClass="modal-label"/>
-            <ComboBox fx:id="comboDepartment" maxWidth="Infinity" promptText="Select your academic program" prefHeight="42"/>
+            <Label text="Department / Course" styleClass="modal-label"/>
+            <ComboBox fx:id="comboDepartment" maxWidth="Infinity" promptText="Select your academic program" prefHeight="40"/>
         </VBox>
 
-        <Label fx:id="lblMessage" text="" styleClass="modal-error-label" wrapText="true"/>
+        <Label fx:id="lblMessage" text="" styleClass="form-message-error" wrapText="true" maxWidth="Infinity"/>
 
-        <Button text="Save Profile Changes" styleClass="btn-primary" maxWidth="Infinity" prefHeight="44" onAction="#handleSaveProfile">
-            <VBox.margin>
-                <Insets top="10"/>
-            </VBox.margin>
-        </Button>
+        <Button text="Save Profile Changes" styleClass="btn-primary" maxWidth="Infinity" prefHeight="42" onAction="#handleSaveProfile"/>
     </VBox>
 </VBox>

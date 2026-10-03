@@ -26,7 +26,6 @@ public class UserSettingsController extends BaseController {
 
     @FXML
     public void initialize() {
-        // Populate official CLAS programs
         comboDepartment.setItems(FXCollections.observableArrayList(
                 "AB Political Science",
                 "BA Communication",
@@ -90,10 +89,8 @@ public class UserSettingsController extends BaseController {
 
             int rows = stmt.executeUpdate();
             if (rows > 0) {
-                // 1. Update live session
                 UserSession.getInstance().setFullName(fullName);
 
-                // 2. Trigger instant header UI refresh on parent dashboard
                 if (txtFullName.getScene() != null && txtFullName.getScene().getUserData() instanceof UserDashboardController) {
                     UserDashboardController dashboard = (UserDashboardController) txtFullName.getScene().getUserData();
                     dashboard.refreshHeaderProfile();
@@ -112,10 +109,7 @@ public class UserSettingsController extends BaseController {
 
     private void setMessage(String text, boolean success) {
         lblMessage.setText(text);
-        if (success) {
-            lblMessage.setStyle("-fx-text-fill: #10b981;");
-        } else {
-            lblMessage.setStyle("-fx-text-fill: #ef4444;");
-        }
+        lblMessage.getStyleClass().removeAll("form-message-error", "form-message-success");
+        lblMessage.getStyleClass().add(success ? "form-message-success" : "form-message-error");
     }
 }

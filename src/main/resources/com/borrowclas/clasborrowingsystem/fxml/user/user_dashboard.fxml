@@ -52,7 +52,7 @@
                 <Separator styleClass="sidebar-divider"/>
 
                 <Button fx:id="btnNavCatalog" text="Equipment Catalog" styleClass="sidebar-btn-active" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewCatalog"/>
-                <Button fx:id="btnNavMyBorrows" text="My Active Borrows" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewMyBorrows"/>
+                <Button fx:id="btnNavMyBorrows" text="Active Borrows" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewMyBorrows"/>
                 <Button fx:id="btnNavRequestLog" text="Borrow Request" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewBorrowRequest"/>
                 <Button fx:id="btnNavSettings" text="Account Settings" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewSettings"/>
 

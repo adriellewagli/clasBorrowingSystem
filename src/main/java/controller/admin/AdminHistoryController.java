@@ -6,17 +6,21 @@ import dao.EquipmentDAOImpl;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
+import javafx.collections.transformation.SortedList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.VBox;
 import model.BorrowedItem;
+import util.TableCells;
 
 import java.time.LocalDate;
-import java.util.List;
 
 public class AdminHistoryController extends BaseController {
 
     @FXML private TextField txtSearch;
+    @FXML private VBox tableCard;
+    @FXML private Label lblRowCount;
     @FXML private TableView<BorrowedItem> tblAuditHistory;
     @FXML private TableColumn<BorrowedItem, Integer> colTransId;
     @FXML private TableColumn<BorrowedItem, String> colBorrower;
@@ -28,68 +32,61 @@ public class AdminHistoryController extends BaseController {
 
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<BorrowedItem> auditList = FXCollections.observableArrayList();
+    private FilteredList<BorrowedItem> filteredData;
 
     @FXML
     public void initialize() {
         setupTableColumns();
-        loadAuditLogData();
         setupSearchFilter();
+        loadAuditLogData();
     }
 
     private void setupTableColumns() {
         colTransId.setCellValueFactory(new PropertyValueFactory<>("borrowId"));
-        colBorrower.setCellValueFactory(new PropertyValueFactory<>("borrowerName")); // Bound to borrowerName
+        colBorrower.setCellValueFactory(new PropertyValueFactory<>("borrowerName"));
         colEquipment.setCellValueFactory(new PropertyValueFactory<>("equipmentName"));
         colBorrowDate.setCellValueFactory(new PropertyValueFactory<>("borrowDate"));
         colDueDate.setCellValueFactory(new PropertyValueFactory<>("dueDate"));
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
         colProcessedBy.setCellValueFactory(new PropertyValueFactory<>("processedBy"));
 
-        // Custom status badge rendering
-        colStatus.setCellFactory(column -> new TableCell<BorrowedItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null); setGraphic(null);
-                } else {
-                    Label badge = new Label(item.toUpperCase());
-                    badge.getStyleClass().add("status-badge");
-                    if (item.equalsIgnoreCase("Active") || item.equalsIgnoreCase("Approved")) badge.getStyleClass().add("status-checked-out");
-                    else if (item.equalsIgnoreCase("Returned")) badge.getStyleClass().add("status-default");
-                    else if (item.equalsIgnoreCase("Overdue") || item.equalsIgnoreCase("Rejected")) badge.getStyleClass().add("status-maintenance");
-                    else badge.getStyleClass().add("status-default");
-                    setGraphic(badge);
-                }
-            }
-        });
+        colTransId.setCellFactory(TableCells.idCell());
+        colBorrower.setCellFactory(TableCells.avatarNameCell());
+        colEquipment.setCellFactory(TableCells.primaryCell());
+        colBorrowDate.setCellFactory(TableCells.dateCell());
+        colDueDate.setCellFactory(TableCells.dateCell());
+        colStatus.setCellFactory(TableCells.statusPill());
+        colProcessedBy.setCellFactory(TableCells.mutedCell());
+
+        TableCells.modernize(tblAuditHistory);
+        if (tableCard != null) TableCells.clipRounded(tableCard, 14);
     }
 
     @FXML
     public void loadAuditLogData() {
-        auditList.clear();
-        List<BorrowedItem> dbList = equipmentDAO.getAllTransactionHistory();
-        auditList.addAll(dbList);
-        tblAuditHistory.setItems(auditList);
+        auditList.setAll(equipmentDAO.getAllTransactionHistory());
     }
 
     private void setupSearchFilter() {
-        FilteredList<BorrowedItem> filteredData = new FilteredList<>(auditList, p -> true);
+        filteredData = new FilteredList<>(auditList, p -> true);
+        SortedList<BorrowedItem> sorted = new SortedList<>(filteredData);
+        sorted.comparatorProperty().bind(tblAuditHistory.comparatorProperty());
+        tblAuditHistory.setItems(sorted);
+        TableCells.bindCount(lblRowCount, filteredData, auditList);
 
-        txtSearch.textProperty().addListener((observable, oldValue, newValue) -> {
-            filteredData.setPredicate(item -> {
-                if (newValue == null || newValue.isBlank()) return true;
+        txtSearch.textProperty().addListener((obs, oldV, newV) -> filteredData.setPredicate(item -> {
+            if (newV == null || newV.isBlank()) return true;
+            String f = newV.toLowerCase().trim();
+            return String.valueOf(item.getBorrowId()).contains(f)
+                    || has(item.getBorrowerName(), f)
+                    || has(item.getEquipmentName(), f)
+                    || has(item.getCategory(), f)
+                    || has(item.getProcessedBy(), f)
+                    || has(item.getStatus(), f);
+        }));
+    }
 
-                String filter = newValue.toLowerCase().trim();
-                if (String.valueOf(item.getBorrowId()).contains(filter)) return true;
-                if (item.getBorrowerName() != null && item.getBorrowerName().toLowerCase().contains(filter)) return true;
-                if (item.getEquipmentName() != null && item.getEquipmentName().toLowerCase().contains(filter)) return true;
-                if (item.getCategory() != null && item.getCategory().toLowerCase().contains(filter)) return true;
-                if (item.getProcessedBy() != null && item.getProcessedBy().toLowerCase().contains(filter)) return true;
-                return item.getStatus() != null && item.getStatus().toLowerCase().contains(filter);
-            });
-        });
-
-        tblAuditHistory.setItems(filteredData);
+    private boolean has(String v, String f) {
+        return v != null && v.toLowerCase().contains(f);
     }
 }

@@ -6,17 +6,21 @@ import dao.EquipmentDAOImpl;
 import javafx.animation.FadeTransition;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
+import javafx.collections.transformation.SortedList;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.beans.property.SimpleStringProperty;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 import model.BorrowedItem;
 import model.UserSession;
+import util.TableCells;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -42,7 +46,9 @@ public class AdminDashboardController extends BaseController {
     @FXML private Label lblPendingReturns;
     @FXML private Label lblOverdueItems;
 
-    // --- Table ---
+    // --- Search + Table ---
+    @FXML private TextField txtSearch;
+    @FXML private VBox tableCard;
     @FXML private TableView<BorrowedItem> tblTransactions;
     @FXML private TableColumn<BorrowedItem, Integer> colTransId;
     @FXML private TableColumn<BorrowedItem, String> colBorrower;
@@ -59,6 +65,7 @@ public class AdminDashboardController extends BaseController {
 
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<BorrowedItem> transactionList = FXCollections.observableArrayList();
+    private FilteredList<BorrowedItem> filteredList;
     private BorrowedItem selectedTransaction;
 
     private Node requestsView = null;
@@ -81,61 +88,73 @@ public class AdminDashboardController extends BaseController {
         comboCondition.setItems(FXCollections.observableArrayList("Good / Undamaged", "Minor Wear", "Damaged (Needs Repair)"));
 
         setupTableColumns();
+        setupSearch();
         loadTransactionData();
     }
 
     private void setupTableColumns() {
         colTransId.setCellValueFactory(new PropertyValueFactory<>("borrowId"));
         colEquipment.setCellValueFactory(new PropertyValueFactory<>("equipmentName"));
-        colBorrower.setCellValueFactory(new PropertyValueFactory<>("category"));
+        colBorrower.setCellValueFactory(d -> new SimpleStringProperty(displayBorrower(d.getValue())));
         colDueDate.setCellValueFactory(new PropertyValueFactory<>("dueDate"));
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
 
-        colStatus.setCellFactory(column -> new TableCell<BorrowedItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null); setGraphic(null);
-                } else {
-                    Label badge = new Label(item.toUpperCase());
-                    badge.getStyleClass().add("status-badge");
-                    if (item.equalsIgnoreCase("Active")) badge.getStyleClass().add("status-checked-out");
-                    else if (item.equalsIgnoreCase("Overdue")) badge.getStyleClass().add("status-maintenance");
-                    else badge.getStyleClass().add("status-default");
-                    setGraphic(badge);
-                }
-            }
-        });
+        // --- Modern cell renderers (see util/TableCells.java) ---
+        colTransId.setCellFactory(TableCells.<BorrowedItem, Integer>idCell());
+        colBorrower.setCellFactory(TableCells.avatarNameCell());
+        colEquipment.setCellFactory(TableCells.primaryCell());
+        colDueDate.setCellFactory(TableCells.<BorrowedItem, LocalDate>dueDateCell(
+                t -> "Overdue".equalsIgnoreCase(t.getStatus())));
+        colStatus.setCellFactory(TableCells.<BorrowedItem>statusPill());
+        colAction.setCellFactory(TableCells.<BorrowedItem>actionButton("Process Return", this::openReturnModal));
 
-        colAction.setCellFactory(param -> new TableCell<>() {
-            private final Button btnProcess = new Button("Process Return");
-            {
-                btnProcess.getStyleClass().add("btn-primary");
-                btnProcess.setOnAction(event -> openReturnModal(getTableView().getItems().get(getIndex())));
-            }
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : btnProcess);
-            }
-        });
+        TableCells.modernize(tblTransactions);
+        // Round the table corners to match the card
+        if (tableCard != null) TableCells.clipRounded(tableCard, 14);
+    }
+
+    /** Wires the search box: filters by ID, borrower, equipment, or status. */
+    private void setupSearch() {
+        filteredList = new FilteredList<>(transactionList, t -> true);
+        SortedList<BorrowedItem> sorted = new SortedList<>(filteredList);
+        sorted.comparatorProperty().bind(tblTransactions.comparatorProperty());
+        tblTransactions.setItems(sorted);
+
+        if (txtSearch != null) {
+            txtSearch.textProperty().addListener((obs, oldV, newV) ->
+                    filteredList.setPredicate(t -> matchesSearch(t, newV)));
+        }
+    }
+
+    /** Borrower name if the query provides it, otherwise falls back to category. */
+    private static String displayBorrower(BorrowedItem t) {
+        String n = t.getBorrowerName();
+        return (n != null && !n.isBlank()) ? n : t.getCategory();
+    }
+
+    private boolean matchesSearch(BorrowedItem t, String query) {
+        if (query == null || query.isBlank()) return true;
+        String q = query.trim().toLowerCase();
+        return String.valueOf(t.getBorrowId()).contains(q)
+                || contains(t.getEquipmentName(), q)
+                || contains(displayBorrower(t), q)
+                || contains(t.getStatus(), q);
+    }
+
+    private boolean contains(String value, String q) {
+        return value != null && value.toLowerCase().contains(q);
     }
 
     @FXML
     private void loadTransactionData() {
-        transactionList.clear();
         List<BorrowedItem> dbList = equipmentDAO.getAllActiveTransactions();
-        transactionList.addAll(dbList);
-        if (tblTransactions != null) {
-            tblTransactions.setItems(transactionList);
-        }
+        transactionList.setAll(dbList);
         updateMetrics();
     }
 
     private void updateMetrics() {
         if (lblTotalCheckedOut != null) lblTotalCheckedOut.setText(String.valueOf(transactionList.size()));
-        long overdue = transactionList.stream().filter(t -> t.getStatus().equals("Overdue")).count();
+        long overdue = transactionList.stream().filter(t -> "Overdue".equalsIgnoreCase(t.getStatus())).count();
         if (lblOverdueItems != null) lblOverdueItems.setText(String.valueOf(overdue));
     }
 
@@ -144,11 +163,15 @@ public class AdminDashboardController extends BaseController {
         lblModalEquipmentName.setText(transaction.getEquipmentName());
         comboCondition.getSelectionModel().selectFirst();
 
-        boolean isOverdue = transaction.getStatus().equalsIgnoreCase("Overdue");
+        boolean isOverdue = "Overdue".equalsIgnoreCase(transaction.getStatus());
         lblLateFeeWarning.setVisible(isOverdue);
         lblLateFeeWarning.setManaged(isOverdue);
 
+        modalOverlay.setOpacity(0);
         modalOverlay.setVisible(true);
+        FadeTransition ft = new FadeTransition(Duration.millis(180), modalOverlay);
+        ft.setToValue(1);
+        ft.play();
     }
 
     @FXML

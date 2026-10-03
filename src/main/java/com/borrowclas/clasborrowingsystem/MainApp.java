@@ -9,6 +9,8 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.stage.Stage;
+import util.FontManager;                      // ← add
+
 
 public class MainApp extends Application {
 
@@ -20,6 +22,9 @@ public class MainApp extends Application {
         // Load the single master shell container
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/main_layout.fxml"));
         Scene scene = new Scene(loader.load());
+
+        FontManager.install(scene);           // ← add (once, here)
+
 
         // --- GLOBAL FULL-SCREEN SHORTCUT (F10 / F11 TOGGLE) ---
         scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {

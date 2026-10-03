@@ -5,12 +5,16 @@ import dao.EquipmentDAO;
 import dao.EquipmentDAOImpl;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
+import javafx.collections.transformation.SortedList;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.VBox;
 import model.BorrowedItem;
 import model.UserSession;
+import util.TableCells;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -26,23 +30,26 @@ public class RequestHistoryLogController extends BaseController {
     @FXML private TableColumn<BorrowedItem, String> colStatus;
     @FXML private TableColumn<BorrowedItem, String> colNotes;
 
-    // Filter Chips
+    // Filter chips
     @FXML private Button btnFilterAll;
     @FXML private Button btnFilterApproved;
     @FXML private Button btnFilterPending;
     @FXML private Button btnFilterReturned;
 
+    // Optional (add fx:id in the FXML to enable; safe if missing)
+    @FXML private VBox tableCard;
+    @FXML private Label lblRowCount;
+
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<BorrowedItem> masterHistoryList = FXCollections.observableArrayList();
+    private FilteredList<BorrowedItem> filteredHistory;
+    private String statusFilter = null;
 
     @FXML
     public void initialize() {
         setupTableColumns();
+        setupFiltering();
         loadHistoryData();
-
-        if (txtSearch != null) {
-            txtSearch.textProperty().addListener((obs, oldVal, newVal) -> applySearchFilter(newVal));
-        }
     }
 
     private void setupTableColumns() {
@@ -52,72 +59,45 @@ public class RequestHistoryLogController extends BaseController {
         colTargetReturn.setCellValueFactory(new PropertyValueFactory<>("dueDate"));
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
 
-        // Status badge color coding matching system palette
-        colStatus.setCellFactory(column -> new TableCell<BorrowedItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                } else {
-                    Label badge = new Label(item.toUpperCase());
-                    badge.getStyleClass().add("status-badge");
+        colReqId.setCellFactory(TableCells.idCell());
+        colEquipment.setCellFactory(TableCells.primaryCell());
+        colRequestDate.setCellFactory(TableCells.dateCell());
+        colTargetReturn.setCellFactory(TableCells.dateCell());
+        colStatus.setCellFactory(TableCells.statusPill());
 
-                    switch (item.toLowerCase()) {
-                        case "approved":
-                        case "active":
-                            badge.getStyleClass().add("status-available");
-                            break;
-                        case "pending":
-                        case "pending return":
-                            badge.getStyleClass().add("status-checked-out");
-                            break;
-                        case "rejected":
-                        case "overdue":
-                            badge.getStyleClass().add("status-maintenance");
-                            break;
-                        default:
-                            badge.getStyleClass().add("status-default");
-                            break;
-                    }
-                    setGraphic(badge);
-                    setText(null);
-                }
-            }
-        });
+        TableCells.modernize(tblRequestHistory);
+        if (tableCard != null) TableCells.clipRounded(tableCard, 14);
+    }
+
+    private void setupFiltering() {
+        filteredHistory = new FilteredList<>(masterHistoryList, i -> true);
+        SortedList<BorrowedItem> sorted = new SortedList<>(filteredHistory);
+        sorted.comparatorProperty().bind(tblRequestHistory.comparatorProperty());
+        tblRequestHistory.setItems(sorted);
+        TableCells.bindCount(lblRowCount, filteredHistory, masterHistoryList);
+
+        if (txtSearch != null) {
+            txtSearch.textProperty().addListener((obs, o, n) -> applyFilters());
+        }
+    }
+
+    private void applyFilters() {
+        String q = (txtSearch == null || txtSearch.getText() == null) ? "" : txtSearch.getText().trim().toLowerCase();
+        filteredHistory.setPredicate(item ->
+                (statusFilter == null || statusFilter.equalsIgnoreCase(item.getStatus()))
+                        && (q.isEmpty() || has(item.getEquipmentName(), q) || has(item.getStatus(), q)));
+    }
+
+    private boolean has(String v, String q) {
+        return v != null && v.toLowerCase().contains(q);
     }
 
     private void loadHistoryData() {
-        masterHistoryList.clear();
-        int currentUserId = 1; // Fallback or UserSession.getInstance().getUserId()
+        UserSession session = UserSession.getInstance();
+        int currentUserId = (session != null && session.getUserId() > 0) ? session.getUserId() : 1;
 
         List<BorrowedItem> history = equipmentDAO.getBorrowHistoryForUser(currentUserId);
-        if (history != null) {
-            masterHistoryList.addAll(history);
-        }
-
-        if (tblRequestHistory != null) {
-            tblRequestHistory.setItems(masterHistoryList);
-        }
-    }
-
-    private void applySearchFilter(String query) {
-        if (query == null || query.isBlank()) {
-            tblRequestHistory.setItems(masterHistoryList);
-            return;
-        }
-
-        String lower = query.toLowerCase().trim();
-        ObservableList<BorrowedItem> filtered = FXCollections.observableArrayList();
-
-        for (BorrowedItem item : masterHistoryList) {
-            if (item.getEquipmentName().toLowerCase().contains(lower) ||
-                    item.getStatus().toLowerCase().contains(lower)) {
-                filtered.add(item);
-            }
-        }
-        tblRequestHistory.setItems(filtered);
+        masterHistoryList.setAll(history != null ? history : List.of());
     }
 
     private void updateActiveFilterChip(Button activeButton) {
@@ -136,37 +116,31 @@ public class RequestHistoryLogController extends BaseController {
 
     @FXML
     private void filterAll(ActionEvent event) {
-        updateActiveFilterChip(btnFilterAll);
+        statusFilter = null;
         if (txtSearch != null) txtSearch.clear();
-        tblRequestHistory.setItems(masterHistoryList);
+        applyFilters();
+        updateActiveFilterChip(btnFilterAll);
     }
 
     @FXML
     private void filterApproved(ActionEvent event) {
+        statusFilter = "Approved";
+        applyFilters();
         updateActiveFilterChip(btnFilterApproved);
-        filterByStatus("Approved");
     }
 
     @FXML
     private void filterPending(ActionEvent event) {
+        statusFilter = "Pending";
+        applyFilters();
         updateActiveFilterChip(btnFilterPending);
-        filterByStatus("Pending");
     }
 
     @FXML
     private void filterReturned(ActionEvent event) {
+        statusFilter = "Returned";
+        applyFilters();
         updateActiveFilterChip(btnFilterReturned);
-        filterByStatus("Returned");
-    }
-
-    private void filterByStatus(String status) {
-        ObservableList<BorrowedItem> filtered = FXCollections.observableArrayList();
-        for (BorrowedItem item : masterHistoryList) {
-            if (status.equalsIgnoreCase(item.getStatus())) {
-                filtered.add(item);
-            }
-        }
-        tblRequestHistory.setItems(filtered);
     }
 
     @FXML

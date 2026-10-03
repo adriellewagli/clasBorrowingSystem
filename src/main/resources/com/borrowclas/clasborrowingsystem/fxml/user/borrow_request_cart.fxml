@@ -5,170 +5,132 @@
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.*?>
 
-<VBox spacing="20.0" style="-fx-padding: 24; -fx-background-color: #f8fafc;" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controller.user.BorrowRequestCartController">
-    <children>
-        <!-- Header -->
-        <HBox alignment="CENTER_LEFT" spacing="15">
-            <children>
-                <VBox HBox.hgrow="ALWAYS">
-                    <children>
-                        <Label style="-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #0f172a;" text="Borrow Request Checkout" />
-                        <Label style="-fx-font-size: 13px; -fx-text-fill: #64748b;" text="Review your selected equipment items and complete verification details." />
-                    </children>
-                </VBox>
-                <Button fx:id="btnClearCart" onAction="#handleClearCart" style="-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-font-weight: bold; -fx-background-radius: 6; -fx-padding: 8 16; -fx-cursor: hand;" text="Clear Request Queue" />
-            </children>
-        </HBox>
+<VBox spacing="20" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.user.BorrowRequestCartController">
+    <padding>
+        <Insets top="24" right="28" bottom="24" left="28"/>
+    </padding>
 
-        <!-- Main Split Workspace -->
-        <HBox spacing="20.0" VBox.vgrow="ALWAYS">
-            <children>
+    <!-- HEADER -->
+    <HBox alignment="CENTER_LEFT" spacing="16">
+        <VBox spacing="3" HBox.hgrow="ALWAYS">
+            <Label text="Borrow Request Checkout" styleClass="page-title"/>
+            <Label text="Review your selected equipment and complete verification details." styleClass="page-subtitle"/>
+        </VBox>
+        <Button fx:id="btnClearCart" text="Clear Request Queue" styleClass="btn-danger-soft" onAction="#handleClearCart"/>
+    </HBox>
 
-                <!-- LEFT PANEL: Queued Items Table -->
-                <VBox spacing="12.0" style="-fx-background-color: white; -fx-background-radius: 12; -fx-padding: 16;" HBox.hgrow="ALWAYS">
-                    <children>
-                        <Label style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #1e293b;" text="Selected Equipment Queue" />
+    <HBox spacing="20" VBox.vgrow="ALWAYS">
 
-                        <TableView fx:id="tblCart" VBox.vgrow="ALWAYS">
-                            <columns>
-                                <TableColumn fx:id="colCartName" prefWidth="240.0" text="EQUIPMENT NAME" />
-                                <TableColumn fx:id="colCartCategory" prefWidth="180.0" text="CATEGORY" />
-                                <TableColumn fx:id="colCartSerial" prefWidth="160.0" text="SERIAL NUMBER" />
-                            </columns>
-                            <columnResizePolicy>
-                                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
-                            </columnResizePolicy>
-                        </TableView>
+        <!-- LEFT: QUEUE -->
+        <VBox fx:id="tableCard" styleClass="main-dashboard-card" HBox.hgrow="ALWAYS">
+            <HBox styleClass="card-title-bar" alignment="CENTER_LEFT">
+                <Label text="Selected Equipment Queue" styleClass="section-title"/>
+            </HBox>
 
-                        <!-- Fee Summary Footer Box -->
-                        <VBox spacing="8.0" style="-fx-background-color: #f1f5f9; -fx-background-radius: 8; -fx-padding: 12;">
-                            <children>
-                                <HBox alignment="CENTER_LEFT">
-                                    <children>
-                                        <Label style="-fx-font-size: 13px; -fx-text-fill: #475569;" text="Queue Item Count:" />
-                                        <Region HBox.hgrow="ALWAYS" />
-                                        <Label fx:id="lblQueueCount" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #0f172a;" text="0 Items" />
-                                    </children>
-                                </HBox>
-                                <HBox alignment="CENTER_LEFT">
-                                    <children>
-                                        <Label style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #0f172a;" text="Total Calculated Fee:" />
-                                        <Region HBox.hgrow="ALWAYS" />
-                                        <Label fx:id="lblCalculatedFee" style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #2563eb;" text="₱0.00" />
-                                    </children>
-                                </HBox>
-                            </children>
+            <TableView fx:id="tblCart" VBox.vgrow="ALWAYS">
+                <columns>
+                    <TableColumn fx:id="colCartName" text="EQUIPMENT" prefWidth="220"/>
+                    <TableColumn fx:id="colCartCategory" text="CATEGORY" prefWidth="150"/>
+                    <TableColumn fx:id="colCartSerial" text="SERIAL NUMBER" prefWidth="140"/>
+                    <TableColumn fx:id="colCartAction" text="" prefWidth="100" resizable="false" sortable="false"/>
+                </columns>
+                <columnResizePolicy>
+                    <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+                </columnResizePolicy>
+            </TableView>
+
+            <VBox styleClass="fee-box">
+                <HBox alignment="CENTER_LEFT">
+                    <Label text="Queue item count" styleClass="fee-label"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Label fx:id="lblQueueCount" text="0 Items" styleClass="fee-value"/>
+                </HBox>
+                <HBox alignment="CENTER_LEFT">
+                    <Label text="Total calculated fee" styleClass="fee-value"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Label fx:id="lblCalculatedFee" text="₱0.00" styleClass="fee-total"/>
+                </HBox>
+            </VBox>
+        </VBox>
+
+        <!-- RIGHT: BORROWER + VERIFICATION -->
+        <ScrollPane fitToWidth="true" prefWidth="450" minWidth="450" styleClass="transparent-scroll" hbarPolicy="NEVER">
+            <content>
+                <VBox spacing="16" styleClass="main-dashboard-card">
+                    <padding>
+                        <Insets top="22" right="22" bottom="22" left="22"/>
+                    </padding>
+
+                    <Label text="Borrower Profile &amp; Duration" styleClass="section-title"/>
+
+                    <HBox spacing="18">
+                        <RadioButton fx:id="radioStudent" text="Student" selected="true" onAction="#handleProfileTypeChange">
+                            <toggleGroup><ToggleGroup fx:id="profileTypeGroup"/></toggleGroup>
+                        </RadioButton>
+                        <RadioButton fx:id="radioFaculty" text="Faculty" toggleGroup="$profileTypeGroup" onAction="#handleProfileTypeChange"/>
+                    </HBox>
+
+                    <VBox spacing="6">
+                        <Label text="Full Borrower Name" styleClass="modal-label"/>
+                        <TextField fx:id="txtBorrowerName" promptText="e.g. Juan Dela Cruz" styleClass="clean-search-field"/>
+                    </VBox>
+
+                    <VBox fx:id="boxStudentFields" spacing="12">
+                        <VBox spacing="6">
+                            <Label text="Student Number" styleClass="modal-label"/>
+                            <TextField fx:id="txtStudentId" promptText="Format: 20250045-N" styleClass="clean-search-field"/>
                         </VBox>
-                    </children>
-                </VBox>
-
-                <!-- RIGHT PANEL: Verification & Profile Details -->
-                <ScrollPane fitToWidth="true" prefWidth="440.0" style="-fx-background-color: transparent; -fx-background: transparent;">
-                    <content>
-                        <VBox spacing="16.0" style="-fx-background-color: white; -fx-background-radius: 12; -fx-padding: 20;">
-                            <children>
-                                <Label style="-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #1e293b;" text="Borrower Profile &amp; Duration" />
-
-                                <!-- Profile Selector -->
-                                <HBox spacing="15.0">
-                                    <children>
-                                        <RadioButton fx:id="radioStudent" onAction="#handleProfileTypeChange" selected="true" text="Student">
-                                            <toggleGroup>
-                                                <ToggleGroup fx:id="profileTypeGroup" />
-                                            </toggleGroup>
-                                        </RadioButton>
-                                        <RadioButton fx:id="radioFaculty" onAction="#handleProfileTypeChange" text="Faculty" toggleGroup="$profileTypeGroup" />
-                                    </children>
-                                </HBox>
-
-                                <VBox spacing="6.0">
-                                    <children>
-                                        <Label style="-fx-font-size: 12px; -fx-text-fill: #475569;" text="Full Borrower Name:" />
-                                        <TextField fx:id="txtBorrowerName" promptText="e.g. Juan Dela Cruz" />
-                                    </children>
-                                </VBox>
-
-                                <!-- Student Fields -->
-                                <VBox fx:id="boxStudentFields" spacing="10.0">
-                                    <children>
-                                        <VBox spacing="6.0">
-                                            <children>
-                                                <Label style="-fx-font-size: 12px; -fx-text-fill: #475569;" text="Student Number:" />
-                                                <TextField fx:id="txtStudentId" promptText="Format: 20250045-N" />
-                                            </children>
-                                        </VBox>
-                                        <VBox spacing="6.0">
-                                            <children>
-                                                <Label style="-fx-font-size: 12px; -fx-text-fill: #475569;" text="Academic Program:" />
-                                                <ComboBox fx:id="txtCourse" maxWidth="1.7976931348623157E308" promptText="Select Academic Program" />
-                                            </children>
-                                        </VBox>
-                                    </children>
-                                </VBox>
-
-                                <!-- Faculty Fields -->
-                                <VBox fx:id="boxFacultyFields" managed="false" spacing="10.0" visible="false">
-                                    <children>
-                                        <VBox spacing="6.0">
-                                            <children>
-                                                <Label style="-fx-font-size: 12px; -fx-text-fill: #475569;" text="Employee ID:" />
-                                                <TextField fx:id="txtEmployeeId" promptText="EMP-1002" />
-                                            </children>
-                                        </VBox>
-                                        <VBox spacing="6.0">
-                                            <children>
-                                                <Label style="-fx-font-size: 12px; -fx-text-fill: #475569;" text="Department:" />
-                                                <ComboBox fx:id="txtDepartment" maxWidth="1.7976931348623157E308" promptText="Select Department" />
-                                            </children>
-                                        </VBox>
-                                    </children>
-                                </VBox>
-
-                                <!-- Duration Selector -->
-                                <VBox spacing="8.0">
-                                    <children>
-                                        <Label style="-fx-font-size: 12px; -fx-text-fill: #475569;" text="Return Schedule:" />
-                                        <HBox spacing="8.0">
-                                            <children>
-                                                <Button fx:id="btn1Day" onAction="#select1Day" styleClass="filter-chip" text="1 Day" />
-                                                <Button fx:id="btn3Days" onAction="#select3Days" styleClass="filter-chip-active" text="3 Days" />
-                                                <Button fx:id="btn7Days" onAction="#select7Days" styleClass="filter-chip" text="7 Days" />
-                                                <Button fx:id="btnCustomDate" onAction="#selectCustomDate" styleClass="filter-chip" text="Custom" />
-                                            </children>
-                                        </HBox>
-                                        <DatePicker fx:id="dpReturnTarget" maxWidth="1.7976931348623157E308" onAction="#calculateTransactionFees" />
-                                    </children>
-                                </VBox>
-
-                                <!-- ID Verification -->
-                                <VBox spacing="8.0">
-                                    <children>
-                                        <Label style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #0f172a;" text="ID Verification:" />
-                                        <StackPane fx:id="cameraPreviewBox" prefHeight="160.0" style="-fx-background-color: #0f172a; -fx-background-radius: 8;">
-                                            <children>
-                                                <ImageView fx:id="imgCameraPreview" fitHeight="150.0" fitWidth="220.0" preserveRatio="true" />
-                                                <Label fx:id="lblCameraStatus" style="-fx-text-fill: #94a3b8; -fx-font-size: 12px;" text="📷 Click capture to start camera preview" />
-                                            </children>
-                                        </StackPane>
-                                        <HBox spacing="8.0">
-                                            <children>
-                                                <Button fx:id="btnCaptureId" maxWidth="1.7976931348623157E308" onAction="#handleCaptureIdSnap" style="-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;" text="📷 Start Camera / Capture" HBox.hgrow="ALWAYS" />
-                                                <Button fx:id="btnRetakeSnap" managed="false" onAction="#handleRetakeSnap" style="-fx-background-color: #64748b; -fx-text-fill: white; -fx-cursor: hand;" text="🔄 Retake" visible="false" />
-                                            </children>
-                                        </HBox>
-                                    </children>
-                                </VBox>
-
-                                <CheckBox fx:id="chkCompliance" text="I confirm equipment will be returned on time and in good condition." wrapText="true" />
-                                <Label fx:id="lblErrorMsg" style="-fx-text-fill: #ef4444; -fx-font-size: 12px;" wrapText="true" />
-
-                                <Button fx:id="btnSubmitRequest" maxWidth="1.7976931348623157E308" onAction="#handleConfirmCommit" prefHeight="44.0" style="-fx-background-color: #10b981; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-background-radius: 8; -fx-cursor: hand;" text="Submit Borrow Request" />
-                            </children>
+                        <VBox spacing="6">
+                            <Label text="Academic Program" styleClass="modal-label"/>
+                            <ComboBox fx:id="txtCourse" maxWidth="Infinity" promptText="Select academic program" prefHeight="40"/>
                         </VBox>
-                    </content>
-                </ScrollPane>
+                    </VBox>
 
-            </children>
-        </HBox>
-    </children>
+                    <VBox fx:id="boxFacultyFields" spacing="12" managed="false" visible="false">
+                        <VBox spacing="6">
+                            <Label text="Employee ID" styleClass="modal-label"/>
+                            <TextField fx:id="txtEmployeeId" promptText="e.g. EMP-1002" styleClass="clean-search-field"/>
+                        </VBox>
+                        <VBox spacing="6">
+                            <Label text="Department" styleClass="modal-label"/>
+                            <ComboBox fx:id="txtDepartment" maxWidth="Infinity" promptText="Select department" prefHeight="40"/>
+                        </VBox>
+                    </VBox>
+
+                    <Separator styleClass="sidebar-divider"/>
+
+                    <VBox spacing="8">
+                        <Label text="Return Schedule" styleClass="modal-label"/>
+                        <HBox spacing="8">
+                            <Button fx:id="btn1Day" text="1 Day" styleClass="filter-chip" onAction="#select1Day"/>
+                            <Button fx:id="btn3Days" text="3 Days" styleClass="filter-chip-active" onAction="#select3Days"/>
+                            <Button fx:id="btn7Days" text="7 Days" styleClass="filter-chip" onAction="#select7Days"/>
+                            <Button fx:id="btnCustomDate" text="Custom" styleClass="filter-chip" onAction="#selectCustomDate"/>
+                        </HBox>
+                        <DatePicker fx:id="dpReturnTarget" maxWidth="Infinity" onAction="#calculateTransactionFees"/>
+                    </VBox>
+
+                    <Separator styleClass="sidebar-divider"/>
+
+                    <VBox spacing="8">
+                        <Label text="ID Verification" styleClass="modal-label"/>
+                        <StackPane fx:id="cameraPreviewBox" styleClass="camera-box" prefHeight="170">
+                            <ImageView fx:id="imgCameraPreview" fitHeight="160" fitWidth="230" preserveRatio="true"/>
+                            <Label fx:id="lblCameraStatus" text="Click capture to start camera preview" styleClass="camera-hint"/>
+                        </StackPane>
+                        <HBox spacing="8">
+                            <Button fx:id="btnCaptureId" text="Start Camera" styleClass="btn-primary" maxWidth="Infinity" HBox.hgrow="ALWAYS" onAction="#handleCaptureIdSnap"/>
+                            <Button fx:id="btnRetakeSnap" text="Retake" styleClass="btn-secondary" managed="false" visible="false" onAction="#handleRetakeSnap"/>
+                        </HBox>
+                    </VBox>
+
+                    <CheckBox fx:id="chkCompliance" text="I confirm the equipment will be returned on time and in good condition." wrapText="true" styleClass="modal-checkbox"/>
+                    <Label fx:id="lblErrorMsg" styleClass="form-message-error" wrapText="true" maxWidth="Infinity"/>
+
+                    <Button fx:id="btnSubmitRequest" text="Submit Borrow Request" styleClass="btn-success" maxWidth="Infinity" prefHeight="44" onAction="#handleConfirmCommit"/>
+                </VBox>
+            </content>
+        </ScrollPane>
+    </HBox>
 </VBox>

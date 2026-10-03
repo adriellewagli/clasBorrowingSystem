@@ -9,8 +9,10 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.VBox;
 import model.BorrowedItem;
 import model.UserSession;
+import util.TableCells;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -33,12 +35,18 @@ public class MyBorrowsController extends BaseController {
     @FXML private Label lblOverdueCount;
     @FXML private Label lblTotalLateFees;
 
+    // Optional (add fx:id in my_borrows.fxml to enable; safe if missing)
+    @FXML private VBox tableCard;
+    @FXML private Label lblRowCount;
+
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<BorrowedItem> activeBorrowsList = FXCollections.observableArrayList();
 
     @FXML
     public void initialize() {
         setupTableColumns();
+        tblActiveBorrows.setItems(activeBorrowsList);
+        TableCells.bindCount(lblRowCount, activeBorrowsList, activeBorrowsList);
         loadEquipmentData();
     }
 
@@ -53,84 +61,36 @@ public class MyBorrowsController extends BaseController {
         colDueDate.setCellValueFactory(new PropertyValueFactory<>("dueDate"));
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
 
-        if (tblActiveBorrows != null) {
-            tblActiveBorrows.getColumns().forEach(col -> col.setReorderable(false));
-        }
+        colBorrowId.setCellFactory(TableCells.idCell());
+        colEquipmentName.setCellFactory(TableCells.primaryCell());
+        colSerialNumber.setCellFactory(TableCells.monoCell());
+        colBorrower.setCellFactory(TableCells.avatarNameCell());
+        colRequestedBy.setCellFactory(TableCells.mutedCell());
+        colProcessedBy.setCellFactory(TableCells.mutedCell());
+        colBorrowDate.setCellFactory(TableCells.dateCell());
+        colDueDate.setCellFactory(TableCells.<BorrowedItem, LocalDate>dueDateCell(
+                (BorrowedItem i) -> "Overdue".equalsIgnoreCase(i.getStatus())));
+        colStatus.setCellFactory(TableCells.statusPill());
+        colAction.setCellFactory(TableCells.<BorrowedItem>actionButton(
+                "Process Return", this::handleReturnRequest,
+                (BorrowedItem i) -> !"Pending Return".equalsIgnoreCase(i.getStatus())));
 
-        colStatus.setCellFactory(column -> new TableCell<BorrowedItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                } else {
-                    Label badge = new Label(item.toUpperCase());
-                    badge.getStyleClass().add("status-badge");
-
-                    if (item.equalsIgnoreCase("Active") || item.equalsIgnoreCase("Approved") || item.equalsIgnoreCase("Checked Out")) {
-                        badge.getStyleClass().add("status-checked-out");
-                    } else if (item.equalsIgnoreCase("Overdue")) {
-                        badge.getStyleClass().add("status-maintenance");
-                    } else {
-                        badge.getStyleClass().add("status-default");
-                    }
-                    setGraphic(badge);
-                    setText(null);
-                }
-            }
-        });
-
-        colAction.setCellFactory(param -> new TableCell<>() {
-            private final Button btnProcessReturn = new Button("Process Return");
-
-            {
-                btnProcessReturn.getStyleClass().add("btn-primary");
-                btnProcessReturn.setOnAction(event -> {
-                    BorrowedItem item = getTableView().getItems().get(getIndex());
-                    handleReturnRequest(item);
-                });
-            }
-
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty) {
-                    setGraphic(null);
-                } else {
-                    BorrowedItem currentItem = getTableView().getItems().get(getIndex());
-                    if ("Pending Return".equalsIgnoreCase(currentItem.getStatus())) {
-                        setGraphic(null);
-                    } else {
-                        setGraphic(btnProcessReturn);
-                    }
-                }
-            }
-        });
+        tblActiveBorrows.getColumns().forEach(col -> col.setReorderable(false));
+        TableCells.modernize(tblActiveBorrows);
+        if (tableCard != null) TableCells.clipRounded(tableCard, 14);
     }
 
     private void loadEquipmentData() {
-        activeBorrowsList.clear();
-
         List<BorrowedItem> dbBorrows = equipmentDAO.getAllActiveTransactions();
-        if (dbBorrows != null) {
-            activeBorrowsList.addAll(dbBorrows);
-        }
-
-        if (tblActiveBorrows != null) {
-            tblActiveBorrows.setItems(activeBorrowsList);
-            tblActiveBorrows.refresh();
-        }
-
+        activeBorrowsList.setAll(dbBorrows != null ? dbBorrows : List.of());
         updateSummaryMetrics();
     }
 
     private void updateSummaryMetrics() {
         int activeCount = activeBorrowsList.size();
         long overdueCount = activeBorrowsList.stream()
-                .filter(i -> i.getStatus() != null && i.getStatus().equalsIgnoreCase("Overdue"))
+                .filter((BorrowedItem i) -> "Overdue".equalsIgnoreCase(i.getStatus()))
                 .count();
-
         double totalLateFees = overdueCount * 50.00;
 
         if (lblActiveLoansCount != null) lblActiveLoansCount.setText(String.valueOf(activeCount));

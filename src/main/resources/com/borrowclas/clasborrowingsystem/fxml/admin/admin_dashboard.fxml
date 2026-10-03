@@ -12,14 +12,13 @@
            fx:controller="controller.admin.AdminDashboardController">
 
     <BorderPane fx:id="mainContentPane">
-        <!-- TOP HEADER -->
         <top>
             <HBox styleClass="top-header" alignment="CENTER_LEFT" spacing="16">
-                <HBox alignment="CENTER_LEFT" spacing="10">
+                <HBox alignment="CENTER_LEFT" spacing="12">
                     <StackPane styleClass="logo-badge">
                         <Label text="CL" styleClass="logo-text"/>
                     </StackPane>
-                    <VBox alignment="CENTER_LEFT">
+                    <VBox alignment="CENTER_LEFT" spacing="1">
                         <Label text="CLAS System Administration" styleClass="header-title"/>
                         <Label text="Inventory &amp; Returns Manager" styleClass="header-subtitle"/>
                     </VBox>
@@ -32,14 +31,13 @@
             </HBox>
         </top>
 
-        <!-- SIDEBAR -->
         <left>
-            <VBox styleClass="sidebar" prefWidth="220" spacing="12">
+            <VBox styleClass="sidebar" prefWidth="230" spacing="6">
                 <HBox alignment="CENTER_LEFT" spacing="10">
-                    <StackPane styleClass="user-avatar-circle" style="-fx-background-color: #3b82f6;">
+                    <StackPane styleClass="user-avatar-circle">
                         <Label fx:id="lblUserAvatar" text="AD" styleClass="avatar-text"/>
                     </StackPane>
-                    <VBox alignment="CENTER_LEFT" spacing="2">
+                    <VBox alignment="CENTER_LEFT" spacing="3">
                         <Label fx:id="lblUserName" text="Admin User" styleClass="user-profile-name"/>
                         <Label fx:id="lblUserRole" text="ADMIN" styleClass="role-badge"/>
                     </VBox>
@@ -59,16 +57,14 @@
             </VBox>
         </left>
 
-        <!-- DYNAMIC CENTER CONTENT (Returns Queue Default) -->
         <center>
             <StackPane fx:id="dynamicContentArea">
-                <VBox fx:id="returnsViewContainer" spacing="16">
+                <VBox fx:id="returnsViewContainer" spacing="18">
                     <padding>
-                        <Insets top="20" right="20" bottom="20" left="20"/>
+                        <Insets top="24" right="28" bottom="24" left="28"/>
                     </padding>
 
-                    <!-- METRIC OVERVIEW CARDS -->
-                    <HBox spacing="16">
+                    <HBox spacing="18">
                         <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
                             <Label text="Currently Checked Out" styleClass="metric-title"/>
                             <Label fx:id="lblTotalCheckedOut" text="0" styleClass="metric-value-dark"/>
@@ -83,15 +79,16 @@
                         </VBox>
                     </HBox>
 
-                    <!-- SEARCH ROW -->
                     <HBox alignment="CENTER_LEFT" spacing="12">
                         <TextField fx:id="txtSearch" promptText="Search transaction ID, student name, or serial number..." styleClass="clean-search-field" HBox.hgrow="ALWAYS"/>
                         <Button text="Refresh Data" styleClass="btn-secondary" onAction="#loadTransactionData"/>
                     </HBox>
 
-                    <!-- TRANSACTIONS TABLE -->
-                    <VBox styleClass="main-dashboard-card" VBox.vgrow="ALWAYS">
+                    <VBox fx:id="tableCard" styleClass="main-dashboard-card" VBox.vgrow="ALWAYS">
                         <TableView fx:id="tblTransactions" VBox.vgrow="ALWAYS">
+                            <placeholder>
+                                <Label text="No transactions to show" styleClass="empty-state"/>
+                            </placeholder>
                             <columns>
                                 <TableColumn fx:id="colTransId" text="TRANS ID" prefWidth="90"/>
                                 <TableColumn fx:id="colBorrower" text="BORROWER" prefWidth="150"/>
@@ -110,24 +107,24 @@
         </center>
     </BorderPane>
 
-    <!-- RETURN PROCESSING MODAL -->
     <StackPane fx:id="modalOverlay" visible="false" styleClass="modal-backdrop" StackPane.alignment="CENTER">
-        <VBox styleClass="modal-dialog" maxWidth="400" spacing="16" StackPane.alignment="CENTER">
-            <HBox alignment="CENTER_LEFT">
-                <VBox spacing="2" HBox.hgrow="ALWAYS">
+        <VBox styleClass="modal-dialog" maxWidth="420" maxHeight="-Infinity" spacing="18" StackPane.alignment="CENTER">
+            <HBox alignment="TOP_LEFT">
+                <VBox spacing="4" HBox.hgrow="ALWAYS">
                     <Label text="Process Equipment Return" styleClass="modal-title"/>
                     <Label fx:id="lblModalEquipmentName" text="Asset Name" styleClass="modal-asset-name"/>
                 </VBox>
+                <Button text="✕" styleClass="modal-close-btn" onAction="#closeModal"/>
             </HBox>
 
             <Separator styleClass="sidebar-divider"/>
 
             <VBox spacing="8">
                 <Label text="Condition upon return:" styleClass="modal-label"/>
-                <ComboBox fx:id="comboCondition" maxWidth="Infinity" />
+                <ComboBox fx:id="comboCondition" maxWidth="Infinity"/>
             </VBox>
 
-            <Label fx:id="lblLateFeeWarning" text="Item is overdue. Late fees apply." styleClass="modal-error-label" visible="false" managed="false"/>
+            <Label fx:id="lblLateFeeWarning" text="Item is overdue. Late fees apply." styleClass="modal-error-label" visible="false" managed="false" maxWidth="Infinity"/>
 
             <HBox alignment="CENTER_RIGHT" spacing="10">
                 <Button text="Cancel" styleClass="btn-secondary" onAction="#closeModal"/>
