@@ -20,6 +20,7 @@ import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 import model.BorrowedItem;
 import model.UserSession;
+import util.CredentialsDialog;
 import util.TableCells;
 
 import java.io.IOException;
@@ -38,6 +39,7 @@ public class AdminDashboardController extends BaseController {
     @FXML private Button btnNavInventory;
     @FXML private Button btnNavMaintenance;
     @FXML private Button btnNavHistory;
+    @FXML private Button btnNavAccounts;
     @FXML private StackPane dynamicContentArea;
     @FXML private VBox returnsViewContainer;
 
@@ -81,7 +83,13 @@ public class AdminDashboardController extends BaseController {
         UserSession session = UserSession.getInstance();
         if (session != null) {
             lblUserName.setText(session.getFullName() != null ? session.getFullName() : "Admin");
-            lblUserRole.setText("ADMIN");
+            boolean superAdmin = session.isSuperAdmin();
+            lblUserRole.setText(superAdmin ? "SUPER ADMIN" : "ADMIN");
+            // Only the Super Admin sees (and can open) the account management tab.
+            if (btnNavAccounts != null) {
+                btnNavAccounts.setVisible(superAdmin);
+                btnNavAccounts.setManaged(superAdmin);
+            }
         }
 
         currentActiveButton = btnNavReturns;
@@ -147,14 +155,18 @@ public class AdminDashboardController extends BaseController {
 
     @FXML
     private void loadTransactionData() {
-        List<BorrowedItem> dbList = equipmentDAO.getAllActiveTransactions();
-        transactionList.setAll(dbList);
+        // Only items the borrower has already clicked "Return item" on show up here.
+        transactionList.setAll(equipmentDAO.getPendingReturnTransactions());
         updateMetrics();
     }
 
     private void updateMetrics() {
-        if (lblTotalCheckedOut != null) lblTotalCheckedOut.setText(String.valueOf(transactionList.size()));
-        long overdue = transactionList.stream().filter(t -> "Overdue".equalsIgnoreCase(t.getStatus())).count();
+        // Metrics cover everything currently out, not just what is waiting to be returned.
+        List<BorrowedItem> stillOut = equipmentDAO.getAllActiveTransactions();
+        long overdue = stillOut.stream().filter(t -> "Overdue".equalsIgnoreCase(t.getStatus())).count();
+
+        if (lblTotalCheckedOut != null) lblTotalCheckedOut.setText(String.valueOf(stillOut.size()));
+        if (lblPendingReturns != null) lblPendingReturns.setText(String.valueOf(transactionList.size()));
         if (lblOverdueItems != null) lblOverdueItems.setText(String.valueOf(overdue));
     }
 
@@ -185,16 +197,24 @@ public class AdminDashboardController extends BaseController {
         if (selectedTransaction != null) {
             String condition = comboCondition.getValue();
             int currentAdminId = UserSession.getInstance().getUserId();
+            String itemName = selectedTransaction.getEquipmentName();
 
-            // Pass currentAdminId so processed_by is updated to the logged-in admin
-            boolean success = equipmentDAO.processReturnRequest(selectedTransaction.getBorrowId(), 0, currentAdminId);
+            // Anything other than "Good / Undamaged" (minor wear or damaged) goes to the Maintenance Log.
+            boolean needsMaintenance = condition != null && !condition.startsWith("Good");
+
+            // Equipment status is updated in the same DB transaction as the return itself.
+            boolean success = equipmentDAO.processReturnRequest(
+                    selectedTransaction.getBorrowId(), currentAdminId, needsMaintenance);
 
             if (success) {
-                if (condition != null && condition.contains("Damaged")) {
-                    equipmentDAO.updateStatus(selectedTransaction.getBorrowId(), "In Maintenance");
-                }
                 loadTransactionData();
                 closeModal();
+                if (needsMaintenance) {
+                    showSuccessDialog("Sent to Maintenance",
+                            "'" + itemName + "' was returned and logged in the Maintenance Log.");
+                }
+            } else {
+                showErrorDialog("Return Error", "Could not process this return. Please refresh the list and try again.");
             }
         }
     }
@@ -287,6 +307,31 @@ public class AdminDashboardController extends BaseController {
         }
     }
 
+    @FXML
+    private void handleViewAccounts(ActionEvent event) {
+        if (isNavigating || currentActiveButton == btnNavAccounts) return;
+        UserSession session = UserSession.getInstance();
+        if (session == null || !session.isSuperAdmin()) return;
+
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/superadmin/manage_accounts.fxml"));
+            Node accountsView = loader.load();
+
+            updateActiveSidebarButton(btnNavAccounts);
+            if (dynamicContentArea != null) {
+                switchViewWithLock(accountsView);
+            }
+        } catch (IOException e) {
+            System.err.println("[AdminDashboardController] Error loading manage_accounts.fxml: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    @FXML
+    private void handleChangeCredentials(ActionEvent event) {
+        CredentialsDialog.show(btnNavHistory.getScene().getWindow(), false);
+    }
+
     private void switchViewWithLock(Node targetView) {
         if (dynamicContentArea == null || targetView == null) return;
 
@@ -302,7 +347,7 @@ public class AdminDashboardController extends BaseController {
 
     private void updateActiveSidebarButton(Button activeButton) {
         currentActiveButton = activeButton;
-        Button[] buttons = {btnNavReturns, btnNavRequests, btnNavInventory, btnNavMaintenance, btnNavHistory};
+        Button[] buttons = {btnNavReturns, btnNavRequests, btnNavInventory, btnNavMaintenance, btnNavHistory, btnNavAccounts};
         for (Button btn : buttons) {
             if (btn != null) {
                 btn.getStyleClass().remove("sidebar-btn-active");
@@ -324,4 +369,4 @@ public class AdminDashboardController extends BaseController {
         UserSession.cleanUserSession();
         navigateTo("/com/borrowclas/clasborrowingsystem/fxml/auth/login.fxml");
     }
-}
+}

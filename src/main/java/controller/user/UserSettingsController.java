@@ -9,6 +9,7 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import model.UserSession;
+import util.CredentialsDialog;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -107,9 +108,17 @@ public class UserSettingsController extends BaseController {
         }
     }
 
+    @FXML
+    private void handleChangeCredentials(ActionEvent event) {
+        if (CredentialsDialog.show(txtUsername.getScene().getWindow(), false)) {
+            loadUserData(userId);
+            setMessage("Login details updated.", true);
+        }
+    }
+
     private void setMessage(String text, boolean success) {
         lblMessage.setText(text);
         lblMessage.getStyleClass().removeAll("form-message-error", "form-message-success");
         lblMessage.getStyleClass().add(success ? "form-message-success" : "form-message-error");
     }
-}
+}

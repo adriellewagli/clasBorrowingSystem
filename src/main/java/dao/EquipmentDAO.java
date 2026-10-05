@@ -2,6 +2,7 @@ package dao;
 
 import model.BorrowedItem;
 import model.Equipment;
+import model.Receipt;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -50,8 +51,24 @@ public interface EquipmentDAO {
     /** Fetch complete borrow transaction history for a specific user */
     List<BorrowedItem> getBorrowHistoryForUser(int userId);
 
-    /** Process an item return request and record the staff/admin who handled it */
-    boolean processReturnRequest(int transactionId, int equipmentId, int adminUserId);
+    /**
+     * User side: flag an active borrow as "PENDING RETURN" so it shows up in the admin's
+     * Process Returns tab. Only the user who requested the borrow can do this.
+     */
+    boolean requestReturn(int transactionId, int userId);
+
+    /**
+     * Admin side: finish a return that the user has already requested.
+     * @param sendToMaintenance true when the item came back worn or damaged - the equipment is then
+     *                          set to MAINTENANCE (shows in the Maintenance Log) instead of AVAILABLE.
+     */
+    boolean processReturnRequest(int transactionId, int adminUserId, boolean sendToMaintenance);
+
+    /** Admin Process Returns tab: only items whose user has clicked "Return item" */
+    List<BorrowedItem> getPendingReturnTransactions();
+
+    /** Digital receipt data for one transaction (null if the transaction doesn't exist) */
+    Receipt getReceiptForTransaction(int transactionId);
 
     /** Fetch all active borrow transactions for the Admin dashboard */
     List<BorrowedItem> getAllActiveTransactions();
@@ -67,4 +84,4 @@ public interface EquipmentDAO {
 
     /** Reject a pending borrow request and record the rejecting admin ID */
     boolean rejectBorrowRequest(int transactionId, int equipmentId, int adminUserId);
-}
+}

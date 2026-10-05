@@ -11,7 +11,9 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.VBox;
 import model.BorrowedItem;
+import model.Receipt;
 import model.UserSession;
+import util.ReceiptOverlay;
 import util.TableCells;
 
 import java.time.LocalDate;
@@ -29,7 +31,10 @@ public class MyBorrowsController extends BaseController {
     @FXML private TableColumn<BorrowedItem, LocalDate> colBorrowDate;
     @FXML private TableColumn<BorrowedItem, LocalDate> colDueDate;
     @FXML private TableColumn<BorrowedItem, String> colStatus;
+    @FXML private TableColumn<BorrowedItem, Void> colReceipt;
     @FXML private TableColumn<BorrowedItem, Void> colAction;
+
+    @FXML private ReceiptOverlay receiptOverlay;
 
     @FXML private Label lblActiveLoansCount;
     @FXML private Label lblOverdueCount;
@@ -71,8 +76,9 @@ public class MyBorrowsController extends BaseController {
         colDueDate.setCellFactory(TableCells.<BorrowedItem, LocalDate>dueDateCell(
                 (BorrowedItem i) -> "Overdue".equalsIgnoreCase(i.getStatus())));
         colStatus.setCellFactory(TableCells.statusPill());
+        colReceipt.setCellFactory(TableCells.<BorrowedItem>actionButton("View Receipt", this::openReceipt));
         colAction.setCellFactory(TableCells.<BorrowedItem>actionButton(
-                "Process Return", this::handleReturnRequest,
+                "Return item", this::handleReturnRequest,
                 (BorrowedItem i) -> !"Pending Return".equalsIgnoreCase(i.getStatus())));
 
         tblActiveBorrows.getColumns().forEach(col -> col.setReorderable(false));
@@ -81,7 +87,10 @@ public class MyBorrowsController extends BaseController {
     }
 
     private void loadEquipmentData() {
-        List<BorrowedItem> dbBorrows = equipmentDAO.getAllActiveTransactions();
+        UserSession session = UserSession.getInstance();
+        List<BorrowedItem> dbBorrows = (session != null && session.getUserId() > 0)
+                ? equipmentDAO.getActiveBorrowsForUser(session.getUserId())
+                : null;
         activeBorrowsList.setAll(dbBorrows != null ? dbBorrows : List.of());
         updateSummaryMetrics();
     }
@@ -104,18 +113,30 @@ public class MyBorrowsController extends BaseController {
         UserSession session = UserSession.getInstance();
         int userId = (session != null && session.getUserId() > 0) ? session.getUserId() : 1;
 
-        boolean success = equipmentDAO.processReturnRequest(item.getBorrowId(), 0, userId);
+        // Only flags the item as "Pending Return" - the admin finishes the return in Process Returns.
+        boolean success = equipmentDAO.requestReturn(item.getBorrowId(), userId);
 
         if (success) {
-            showSuccessDialog("Return Processed", "Return for '" + item.getEquipmentName() + "' has been logged successfully.");
+            showSuccessDialog("Return Requested",
+                    "'" + item.getEquipmentName() + "' is now waiting for an admin to check it in.");
             loadEquipmentData();
         } else {
-            showErrorDialog("Return Error", "Could not process return. Please try again.");
+            showErrorDialog("Return Error", "Could not request the return. Please refresh and try again.");
         }
+    }
+
+    private void openReceipt(BorrowedItem item) {
+        if (item == null) return;
+        Receipt r = equipmentDAO.getReceiptForTransaction(item.getBorrowId());
+        if (r == null) {
+            showErrorDialog("Receipt Unavailable", "Could not load the receipt for transaction #" + item.getBorrowId() + ".");
+            return;
+        }
+        receiptOverlay.show(r);
     }
 
     @FXML
     private void handleRefresh(ActionEvent event) {
         loadEquipmentData();
     }
-}
+}

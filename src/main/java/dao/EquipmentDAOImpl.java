@@ -3,6 +3,7 @@ package dao;
 import db.DatabaseConnection;
 import model.BorrowedItem;
 import model.Equipment;
+import model.Receipt;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -39,13 +40,13 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
         String sql = "SELECT e.equipment_id AS id, e.item_name AS name, e.category, e.serial_number, " +
                 "CASE " +
-                "   WHEN t.status = 'BORROWED' THEN 'Checked Out' " +
+                "   WHEN t.status IN ('BORROWED', 'PENDING RETURN') THEN 'Checked Out' " +
                 "   WHEN t.status = 'PENDING' THEN 'Pending Approval' " +
                 "   WHEN e.status = 'MAINTENANCE' OR e.status = 'REPAIR' THEN 'In Maintenance' " +
                 "   ELSE 'Available' " +
                 "END AS display_status " +
                 "FROM equipment e " +
-                "LEFT JOIN transactions t ON e.equipment_id = t.equipment_id AND t.status IN ('PENDING', 'BORROWED')";
+                "LEFT JOIN transactions t ON e.equipment_id = t.equipment_id AND t.status IN ('PENDING', 'BORROWED', 'PENDING RETURN')";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
@@ -70,16 +71,12 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public List<Equipment> getEquipmentByStatus(String status) {
         List<Equipment> list = new ArrayList<>();
-        String sql = "SELECT equipment_id AS id, item_name AS name, category, status, serial_number, 1 AS quantity FROM equipment WHERE status = ?";
 
-        String dbStatus;
-        if ("Checked Out".equalsIgnoreCase(status)) {
-            dbStatus = "BORROWED";
-        } else if ("Pending Approval".equalsIgnoreCase(status)) {
-            dbStatus = "PENDING";
-        } else {
-            dbStatus = status.toUpperCase();
-        }
+        String dbStatus = toDbStatus(status);
+        // Older rows may have been saved as 'IN MAINTENANCE', so accept both spellings.
+        String where = "MAINTENANCE".equals(dbStatus) ? "status IN (?, 'IN MAINTENANCE')" : "status = ?";
+        String sql = "SELECT equipment_id AS id, item_name AS name, category, status, serial_number, 1 AS quantity " +
+                "FROM equipment WHERE " + where;
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -91,7 +88,8 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     String uiStatus = "Available";
                     if ("BORROWED".equalsIgnoreCase(rawStatus)) uiStatus = "Checked Out";
                     else if ("PENDING".equalsIgnoreCase(rawStatus)) uiStatus = "Pending Approval";
-                    else if ("MAINTENANCE".equalsIgnoreCase(rawStatus)) uiStatus = "In Maintenance";
+                    else if ("MAINTENANCE".equalsIgnoreCase(rawStatus) || "IN MAINTENANCE".equalsIgnoreCase(rawStatus)) uiStatus = "In Maintenance";
+                    else if ("REPAIR".equalsIgnoreCase(rawStatus)) uiStatus = "In Repair";
 
                     list.add(new Equipment(
                             rs.getInt("id"),
@@ -109,17 +107,18 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         return list;
     }
 
+    /** UI label -> value stored in equipment.status */
+    private static String toDbStatus(String uiStatus) {
+        if ("Checked Out".equalsIgnoreCase(uiStatus)) return "BORROWED";
+        if ("Pending Approval".equalsIgnoreCase(uiStatus)) return "PENDING";
+        if ("In Maintenance".equalsIgnoreCase(uiStatus)) return "MAINTENANCE";
+        return uiStatus.toUpperCase();
+    }
+
     @Override
     public boolean updateStatus(int equipmentId, String newStatus) {
         String sql = "UPDATE equipment SET status = ? WHERE equipment_id = ?";
-        String dbStatus;
-        if ("Checked Out".equalsIgnoreCase(newStatus)) {
-            dbStatus = "BORROWED";
-        } else if ("Pending Approval".equalsIgnoreCase(newStatus)) {
-            dbStatus = "PENDING";
-        } else {
-            dbStatus = newStatus.toUpperCase();
-        }
+        String dbStatus = toDbStatus(newStatus);
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -223,11 +222,15 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
         // Filters strictly on t.requested_by so items stay visible regardless of who approved them
         String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.category, e.serial_number, " +
-                "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status " +
+                "t.borrower_name, t.date_borrowed, t.expected_return_date, t.status, " +
+                "u_req.username AS requester_username, u_proc.username AS processor_username " +
                 "FROM transactions t " +
                 "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
+                "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id " +
                 "WHERE t.requested_by = ? " +
-                "AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')";
+                "AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN') " +
+                "ORDER BY t.transaction_id DESC";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -241,7 +244,9 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
                     String rawStatus = rs.getString("status");
                     String uiStatus = "Active";
-                    if ("BORROWED".equalsIgnoreCase(rawStatus)) {
+                    if ("PENDING RETURN".equalsIgnoreCase(rawStatus)) {
+                        uiStatus = "Pending Return";
+                    } else if ("BORROWED".equalsIgnoreCase(rawStatus)) {
                         uiStatus = expectedReturn.isBefore(LocalDate.now()) ? "Overdue" : "Active";
                     }
 
@@ -256,6 +261,8 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                             uiStatus
                     );
                     item.setBorrowerName(rs.getString("borrower_name"));
+                    item.setRequestedBy(rs.getString("requester_username"));
+                    item.setProcessedBy(rs.getString("processor_username"));
                     list.add(item);
                 }
             }
@@ -292,6 +299,8 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
                     if ("BORROWED".equalsIgnoreCase(rawStatus)) {
                         uiStatus = expectedReturn.isBefore(LocalDate.now()) ? "Overdue" : "Approved";
+                    } else if ("PENDING RETURN".equalsIgnoreCase(rawStatus)) {
+                        uiStatus = "Pending Return";
                     } else if ("RETURNED".equalsIgnoreCase(rawStatus)) {
                         uiStatus = "Returned";
                     } else if ("REJECTED".equalsIgnoreCase(rawStatus)) {
@@ -371,6 +380,51 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     }
 
     @Override
+    public List<BorrowedItem> getPendingReturnTransactions() {
+        List<BorrowedItem> list = new ArrayList<>();
+        String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.category, e.serial_number, " +
+                "t.borrower_name, t.date_borrowed, t.expected_return_date, " +
+                "u_req.username AS requester_username, u_proc.username AS processor_username " +
+                "FROM transactions t " +
+                "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
+                "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id " +
+                "WHERE UPPER(t.status) = 'PENDING RETURN' " +
+                "ORDER BY t.transaction_id ASC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                LocalDate expectedReturn = rs.getDate("expected_return_date") != null
+                        ? rs.getDate("expected_return_date").toLocalDate()
+                        : LocalDate.now();
+                String uiStatus = expectedReturn.isBefore(LocalDate.now()) ? "Overdue" : "Pending Return";
+
+                BorrowedItem item = new BorrowedItem(
+                        rs.getInt("transaction_id"),
+                        rs.getInt("equipment_id"),
+                        rs.getString("item_name"),
+                        rs.getString("category"),
+                        rs.getString("serial_number"),
+                        rs.getDate("date_borrowed") != null ? rs.getDate("date_borrowed").toLocalDate() : LocalDate.now(),
+                        expectedReturn,
+                        uiStatus
+                );
+                item.setBorrowerName(rs.getString("borrower_name"));
+                item.setRequestedBy(rs.getString("requester_username"));
+                item.setProcessedBy(rs.getString("processor_username"));
+                list.add(item);
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to fetch pending returns: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    @Override
     public List<BorrowedItem> getPendingTransactions() {
         List<BorrowedItem> list = new ArrayList<>();
         String sql = "SELECT t.transaction_id, e.equipment_id, e.item_name, e.serial_number, e.category, " +
@@ -430,6 +484,8 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 String uiStatus = "Pending";
                 if ("BORROWED".equalsIgnoreCase(rawStatus)) {
                     uiStatus = expectedReturn.isBefore(LocalDate.now()) ? "Overdue" : "Active";
+                } else if ("PENDING RETURN".equalsIgnoreCase(rawStatus)) {
+                    uiStatus = "Pending Return";
                 } else if ("RETURNED".equalsIgnoreCase(rawStatus)) {
                     uiStatus = "Returned";
                 } else if ("REJECTED".equalsIgnoreCase(rawStatus)) {
@@ -533,10 +589,30 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     }
 
     @Override
-    public boolean processReturnRequest(int transactionId, int ignoredEquipmentId, int adminUserId) {
+    public boolean requestReturn(int transactionId, int userId) {
+        String sql = "UPDATE transactions SET status = 'PENDING RETURN' " +
+                "WHERE transaction_id = ? AND requested_by = ? " +
+                "AND UPPER(status) IN ('BORROWED', 'ACTIVE', 'APPROVED')";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, transactionId);
+            stmt.setInt(2, userId);
+            return stmt.executeUpdate() > 0;
+
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to request return for tx " + transactionId + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean processReturnRequest(int transactionId, int adminUserId, boolean sendToMaintenance) {
         String getEqIdSql = "SELECT equipment_id FROM transactions WHERE transaction_id = ?";
-        String updateTxSql = "UPDATE transactions SET status = 'RETURNED', actual_return_date = CURRENT_DATE, processed_by = ? WHERE transaction_id = ?";
-        String updateEqSql = "UPDATE equipment SET status = 'AVAILABLE' WHERE equipment_id = ?";
+        String updateTxSql = "UPDATE transactions SET status = 'RETURNED', actual_return_date = CURRENT_DATE, processed_by = ? " +
+                "WHERE transaction_id = ? AND UPPER(status) = 'PENDING RETURN'";
+        String updateEqSql = "UPDATE equipment SET status = ? WHERE equipment_id = ?";
 
         try (Connection conn = DatabaseConnection.getConnection()) {
             conn.setAutoCommit(false);
@@ -546,20 +622,27 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                  PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
 
                 stmtGet.setInt(1, transactionId);
-                ResultSet rs = stmtGet.executeQuery();
-
-                if (!rs.next()) {
-                    System.err.println("[EquipmentDAOImpl Error] Transaction ID not found.");
-                    conn.rollback();
-                    return false;
+                int equipmentId;
+                try (ResultSet rs = stmtGet.executeQuery()) {
+                    if (!rs.next()) {
+                        System.err.println("[EquipmentDAOImpl Error] Transaction ID not found.");
+                        conn.rollback();
+                        return false;
+                    }
+                    equipmentId = rs.getInt("equipment_id");
                 }
-                int actualEquipmentId = rs.getInt("equipment_id");
 
                 stmtTx.setInt(1, adminUserId);
                 stmtTx.setInt(2, transactionId);
-                stmtTx.executeUpdate();
+                if (stmtTx.executeUpdate() == 0) {
+                    // not in PENDING RETURN (already processed, or the user never clicked Return item)
+                    conn.rollback();
+                    return false;
+                }
 
-                stmtEq.setInt(1, actualEquipmentId);
+                // Worn / damaged items go to the Maintenance Log instead of back into the catalog
+                stmtEq.setString(1, sendToMaintenance ? "MAINTENANCE" : "AVAILABLE");
+                stmtEq.setInt(2, equipmentId);
                 stmtEq.executeUpdate();
 
                 conn.commit();
@@ -574,5 +657,66 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             System.err.println("[EquipmentDAOImpl Error] Database connection failed: " + e.getMessage());
             return false;
         }
+    }
+
+    @Override
+    public Receipt getReceiptForTransaction(int transactionId) {
+        String sql = "SELECT t.transaction_id, t.status, t.borrower_name, t.borrower_type, t.borrower_id_number, " +
+                "t.program_or_dept, t.date_borrowed, t.expected_return_date, t.actual_return_date, " +
+                "t.total_fee_charged, t.late_penalty_per_day, t.initial_condition, " +
+                "e.item_name, e.category, e.serial_number, " +
+                "u_req.username AS requester_username, u_proc.username AS processor_username " +
+                "FROM transactions t " +
+                "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
+                "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id " +
+                "WHERE t.transaction_id = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, transactionId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return null;
+
+                java.sql.Date borrowed = rs.getDate("date_borrowed");
+                java.sql.Date due = rs.getDate("expected_return_date");
+                java.sql.Date returned = rs.getDate("actual_return_date");
+
+                return new Receipt(
+                        rs.getInt("transaction_id"),
+                        receiptStatusLabel(rs.getString("status"), due != null ? due.toLocalDate() : null),
+                        rs.getString("item_name"),
+                        rs.getString("category"),
+                        rs.getString("serial_number"),
+                        rs.getString("borrower_name"),
+                        rs.getString("borrower_type"),
+                        rs.getString("borrower_id_number"),
+                        rs.getString("program_or_dept"),
+                        borrowed != null ? borrowed.toLocalDate() : null,
+                        due != null ? due.toLocalDate() : null,
+                        returned != null ? returned.toLocalDate() : null,
+                        rs.getDouble("total_fee_charged"),
+                        rs.getDouble("late_penalty_per_day"),
+                        rs.getString("initial_condition"),
+                        rs.getString("requester_username"),
+                        rs.getString("processor_username")
+                );
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to load receipt for tx " + transactionId + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** Same wording the Audit History table uses for the status column. */
+    private static String receiptStatusLabel(String rawStatus, LocalDate due) {
+        if ("RETURNED".equalsIgnoreCase(rawStatus)) return "Returned";
+        if ("REJECTED".equalsIgnoreCase(rawStatus)) return "Rejected";
+        if ("PENDING RETURN".equalsIgnoreCase(rawStatus)) return "Pending Return";
+        if ("BORROWED".equalsIgnoreCase(rawStatus)) {
+            return (due != null && due.isBefore(LocalDate.now())) ? "Overdue" : "Active";
+        }
+        return "Pending";
     }
 }

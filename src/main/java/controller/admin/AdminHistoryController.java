@@ -12,6 +12,8 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.VBox;
 import model.BorrowedItem;
+import model.Receipt;
+import util.ReceiptOverlay;
 import util.TableCells;
 
 import java.time.LocalDate;
@@ -29,6 +31,10 @@ public class AdminHistoryController extends BaseController {
     @FXML private TableColumn<BorrowedItem, LocalDate> colDueDate;
     @FXML private TableColumn<BorrowedItem, String> colStatus;
     @FXML private TableColumn<BorrowedItem, String> colProcessedBy;
+    @FXML private TableColumn<BorrowedItem, Void> colReceipt;
+
+    // Digital receipt pop-up (declared in the FXML)
+    @FXML private ReceiptOverlay receiptOverlay;
 
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<BorrowedItem> auditList = FXCollections.observableArrayList();
@@ -57,6 +63,9 @@ public class AdminHistoryController extends BaseController {
         colDueDate.setCellFactory(TableCells.dateCell());
         colStatus.setCellFactory(TableCells.statusPill());
         colProcessedBy.setCellFactory(TableCells.mutedCell());
+        // Pending and rejected requests were never handed out, so there is nothing to receipt yet.
+        colReceipt.setCellFactory(TableCells.<BorrowedItem>actionButton(
+                "View Receipt", this::openReceipt, this::hasReceipt));
 
         TableCells.modernize(tblAuditHistory);
         if (tableCard != null) TableCells.clipRounded(tableCard, 14);
@@ -88,5 +97,21 @@ public class AdminHistoryController extends BaseController {
 
     private boolean has(String v, String f) {
         return v != null && v.toLowerCase().contains(f);
+    }
+
+    // ------------------------------------------------------------ digital receipt
+
+    private boolean hasReceipt(BorrowedItem item) {
+        String st = item.getStatus();
+        return !"Pending".equalsIgnoreCase(st) && !"Rejected".equalsIgnoreCase(st);
+    }
+
+    private void openReceipt(BorrowedItem item) {
+        Receipt r = equipmentDAO.getReceiptForTransaction(item.getBorrowId());
+        if (r == null) {
+            showErrorDialog("Receipt Unavailable", "Could not load the receipt for transaction #" + item.getBorrowId() + ".");
+            return;
+        }
+        receiptOverlay.show(r);
     }
 }
