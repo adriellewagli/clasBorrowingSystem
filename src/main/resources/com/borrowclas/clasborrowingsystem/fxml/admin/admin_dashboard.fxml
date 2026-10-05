@@ -50,9 +50,11 @@
                 <Button fx:id="btnNavInventory" text="Manage Inventory" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewInventory"/>
                 <Button fx:id="btnNavMaintenance" text="Maintenance Log" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewMaintenance"/>
                 <Button fx:id="btnNavHistory" text="Audit History" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewHistory"/>
+                <Button fx:id="btnNavAccounts" text="Manage Accounts" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewAccounts" visible="false" managed="false"/>
 
                 <Region VBox.vgrow="ALWAYS"/>
 
+                <Button text="Change Login Details" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleChangeCredentials"/>
                 <Button text="Log Out" styleClass="sidebar-btn-logout" maxWidth="Infinity" alignment="CENTER" onAction="#handleLogout"/>
             </VBox>
         </left>

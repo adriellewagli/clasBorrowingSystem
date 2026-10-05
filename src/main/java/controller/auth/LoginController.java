@@ -11,7 +11,9 @@ import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.SVGPath;
+import dao.UserDAO;
 import model.UserSession;
+import util.CredentialsDialog;
 
 import java.io.IOException;
 import java.sql.Connection;
@@ -96,11 +98,17 @@ public class LoginController extends BaseController {
                     UserSession.setSession(userId, fullName, dbUsername, role);
                     System.out.println("[DEBUG] UserSession set successfully.");
 
+                    // Accounts created by a Super Admin start with a default username/password.
+                    // Offer to change them now; "Later" keeps the defaults and we ask again next login.
+                    if (new UserDAO().usesDefaultCredentials(userId)) {
+                        CredentialsDialog.show(cardContainer.getScene().getWindow(), true);
+                    }
+
                     // Dynamic Role-Based Routing
+                    // The Super Admin uses the admin dashboard, which adds a "Manage Accounts" tab for that role.
                     String dashboardPath;
-                    if ("SUPERADMIN".equalsIgnoreCase(role)) {
-                        dashboardPath = "/com/borrowclas/clasborrowingsystem/fxml/superadmin/superadmin_dashboard.fxml";
-                    } else if ("ADMIN".equalsIgnoreCase(role)) {
+                    if ("SUPERADMIN".equalsIgnoreCase(role) || "SUPER_ADMIN".equalsIgnoreCase(role)
+                            || "ADMIN".equalsIgnoreCase(role)) {
                         dashboardPath = "/com/borrowclas/clasborrowingsystem/fxml/admin/admin_dashboard.fxml";
                     } else {
                         dashboardPath = "/com/borrowclas/clasborrowingsystem/fxml/user/user_dashboard.fxml";
@@ -182,4 +190,4 @@ public class LoginController extends BaseController {
             e.printStackTrace();
         }
     }
-}
+}

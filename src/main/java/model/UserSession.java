@@ -54,6 +54,15 @@ public class UserSession {
         return role;
     }
 
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    /** True for the Super Admin role (stored as SUPERADMIN; SUPER_ADMIN is accepted too). */
+    public boolean isSuperAdmin() {
+        return role != null && role.replace("_", "").trim().equalsIgnoreCase("SUPERADMIN");
+    }
+
     // Department Getter & Setter
     public String getDepartment() {
         return department;
@@ -72,4 +81,4 @@ public class UserSession {
             instance.department = null;
         }
     }
-}
+}

@@ -1,6 +1,9 @@
 package util;
 
+import javafx.application.Platform;
+import javafx.beans.InvalidationListener;
 import javafx.beans.Observable;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.ObservableList;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -8,6 +11,9 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
 import javafx.util.Callback;
 
 import java.time.LocalDate;
@@ -32,6 +38,109 @@ public final class TableCells {
         Label ph = new Label("No records found");
         ph.getStyleClass().add("empty-state");
         tv.setPlaceholder(ph);
+        fitColumns(tv);
+    }
+
+    // ---------------------------------------------------------------- column sizing
+
+    private static final String UI_FONT = "Plus Jakarta Sans";
+    private static final double MEASURE_SAFETY = 1.15; // fonts differ a little between machines
+
+    /** Renderer wrapper that tells fitColumns how much room the cell needs beyond its text. */
+    private static final class SizedFactory<S, T> implements Callback<TableColumn<S, T>, TableCell<S, T>> {
+        private final Callback<TableColumn<S, T>, TableCell<S, T>> delegate;
+        final double extra;        // avatar, pill padding, etc. added to the measured text
+        final double fixedContent; // content that isn't read from the data (button labels)
+
+        SizedFactory(Callback<TableColumn<S, T>, TableCell<S, T>> delegate, double extra, double fixedContent) {
+            this.delegate = delegate;
+            this.extra = extra;
+            this.fixedContent = fixedContent;
+        }
+
+        @Override public TableCell<S, T> call(TableColumn<S, T> col) { return delegate.call(col); }
+    }
+
+    private static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> sized(
+            Callback<TableColumn<S, T>, TableCell<S, T>> delegate, double extra, double fixedContent) {
+        return new SizedFactory<>(delegate, extra, fixedContent);
+    }
+
+    private static double measure(String text, Font font) {
+        Text t = new Text(text);
+        t.setFont(font);
+        return t.getLayoutBounds().getWidth() * MEASURE_SAFETY;
+    }
+
+    /**
+     * Gives every column at least the width its header and its widest value need, so labels read
+     * "BORROWER NAME" instead of "BORROWER NA...". Spare room is shared out evenly; when the columns
+     * don't fit, the table scrolls sideways instead of cutting words off.
+     * (modernize() already calls this - use it directly only for tables that don't call modernize.)
+     */
+    public static <S> void fitColumns(TableView<S> tv) {
+        tv.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+
+        Runnable fit = () -> applyFit(tv);
+        InvalidationListener onData = o -> Platform.runLater(fit);
+
+        tv.widthProperty().addListener(o -> fit.run());
+        tv.itemsProperty().addListener((obs, oldItems, newItems) -> {
+            if (oldItems != null) oldItems.removeListener(onData);
+            if (newItems != null) newItems.addListener(onData);
+            Platform.runLater(fit);
+        });
+        if (tv.getItems() != null) tv.getItems().addListener(onData);
+        Platform.runLater(fit);
+    }
+
+    private static <S> void applyFit(TableView<S> tv) {
+        javafx.collections.ObservableList<TableColumn<S, ?>> cols = tv.getColumns();
+        if (cols.isEmpty()) return;
+
+        Font headerFont = Font.font(UI_FONT, FontWeight.EXTRA_BOLD, 10.5);
+        Font cellFont = Font.font(UI_FONT, FontWeight.BOLD, 13);
+        int sample = tv.getItems() == null ? 0 : Math.min(tv.getItems().size(), 300);
+
+        double[] need = new double[cols.size()];
+        double total = 0;
+        for (int c = 0; c < cols.size(); c++) {
+            TableColumn<S, ?> col = cols.get(c);
+
+            // header text + cell padding (16 + 16) + room for the sort arrow
+            String header = col.getText() == null ? "" : col.getText().toUpperCase();
+            double w = measure(header, headerFont) + 32 + 26;
+
+            double extra = 0;
+            double content = 0;
+            Object factory = col.getCellFactory();
+            if (factory instanceof SizedFactory<?, ?> sf) {
+                extra = sf.extra;
+                content = sf.fixedContent;
+            }
+            for (int i = 0; i < sample; i++) {
+                ObservableValue<?> ov = col.getCellObservableValue(i);
+                Object v = ov == null ? null : ov.getValue();
+                if (v == null) continue;
+                content = Math.max(content, measure(fmt(v), cellFont) + extra);
+            }
+            if (content > 0) w = Math.max(w, content + 32);
+
+            // keep any minWidth the FXML asked for
+            Double declared = (Double) col.getProperties().computeIfAbsent("fit-declared-min", k -> col.getMinWidth());
+            w = Math.max(w, declared);
+
+            need[c] = Math.ceil(w);
+            total += need[c];
+        }
+
+        double available = tv.getWidth() - 20; // vertical scrollbar + borders
+        double spare = available > total ? (available - total) / cols.size() : 0;
+        for (int c = 0; c < cols.size(); c++) {
+            TableColumn<S, ?> col = cols.get(c);
+            col.setMinWidth(need[c]);
+            col.setPrefWidth(need[c] + spare);
+        }
     }
 
     /** Rounds the card's corners so the table doesn't poke out. */
@@ -70,15 +179,15 @@ public final class TableCells {
         };
     }
 
-    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> idCell()      { return labelCell("cell-id", false); }
-    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> primaryCell() { return labelCell("cell-primary", false); }
-    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> mutedCell()   { return labelCell("cell-muted", true); }
-    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> monoCell()    { return labelCell("cell-mono", true); }
-    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> dateCell()    { return labelCell("cell-muted", true); }
+    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> idCell()      { return TableCells.<S, T>sized(TableCells.<S, T>labelCell("cell-id", false), 0, 0); }
+    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> primaryCell() { return TableCells.<S, T>sized(TableCells.<S, T>labelCell("cell-primary", false), 0, 0); }
+    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> mutedCell()   { return TableCells.<S, T>sized(TableCells.<S, T>labelCell("cell-muted", true), 0, 0); }
+    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> monoCell()    { return TableCells.<S, T>sized(TableCells.<S, T>labelCell("cell-mono", true), 0, 0); }
+    public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> dateCell()    { return TableCells.<S, T>sized(TableCells.<S, T>labelCell("cell-muted", true), 0, 0); }
 
     /** Due date; red + bold when the predicate says the row is overdue. */
     public static <S, T> Callback<TableColumn<S, T>, TableCell<S, T>> dueDateCell(Predicate<S> isOverdue) {
-        return col -> new TableCell<>() {
+        Callback<TableColumn<S, T>, TableCell<S, T>> factory = col -> new TableCell<>() {
             @Override protected void updateItem(T item, boolean empty) {
                 super.updateItem(item, empty);
                 setText(null);
@@ -90,11 +199,12 @@ public final class TableCells {
                 setGraphic(l);
             }
         };
+        return sized(factory, 0, 0);
     }
 
     /** Round initials avatar + name. */
     public static <S> Callback<TableColumn<S, String>, TableCell<S, String>> avatarNameCell() {
-        return col -> new TableCell<>() {
+        Callback<TableColumn<S, String>, TableCell<S, String>> factory = col -> new TableCell<>() {
             @Override protected void updateItem(String name, boolean empty) {
                 super.updateItem(name, empty);
                 setText(null);
@@ -111,12 +221,13 @@ public final class TableCells {
                 setGraphic(box);
             }
         };
+        return sized(factory, 40, 0); // 30px avatar + 10px gap
     }
 
     // ---------------------------------------------------------------- status pill
 
     public static <S> Callback<TableColumn<S, String>, TableCell<S, String>> statusPill() {
-        return col -> new TableCell<>() {
+        Callback<TableColumn<S, String>, TableCell<S, String>> factory = col -> new TableCell<>() {
             @Override protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
                 setText(null);
@@ -126,6 +237,7 @@ public final class TableCells {
                 setGraphic(pill);
             }
         };
+        return sized(factory, 40, 0); // pill padding + the leading dot
     }
 
     // ---------------------------------------------------------------- action buttons
@@ -147,7 +259,7 @@ public final class TableCells {
 
     private static <S> Callback<TableColumn<S, Void>, TableCell<S, Void>> styledButton(
             String text, Consumer<S> onClick, String styleClass, Predicate<S> showWhen) {
-        return col -> new TableCell<>() {
+        Callback<TableColumn<S, Void>, TableCell<S, Void>> factory = col -> new TableCell<>() {
             private final Button btn = new Button(text);
             { btn.getStyleClass().add(styleClass);
                 btn.setOnAction(e -> { S row = rowAt(this); if (row != null) onClick.accept(row); }); }
@@ -158,12 +270,13 @@ public final class TableCells {
                 setGraphic(row != null && showWhen.test(row) ? btn : null);
             }
         };
+        return sized(factory, 0, measure(text, Font.font(UI_FONT, FontWeight.BOLD, 12)) + 28);
     }
 
     /** Two buttons side by side: primary action + danger action (e.g. Approve / Reject). */
     public static <S> Callback<TableColumn<S, Void>, TableCell<S, Void>> dualActionButtons(
             String text1, Consumer<S> action1, String text2, Consumer<S> action2) {
-        return col -> new TableCell<>() {
+        Callback<TableColumn<S, Void>, TableCell<S, Void>> factory = col -> new TableCell<>() {
             private final Button b1 = new Button(text1);
             private final Button b2 = new Button(text2);
             private final HBox box = new HBox(8, b1, b2);
@@ -180,6 +293,8 @@ public final class TableCells {
                 setGraphic(empty ? null : box);
             }
         };
+        Font btnFont = Font.font(UI_FONT, FontWeight.BOLD, 12);
+        return sized(factory, 0, measure(text1, btnFont) + measure(text2, btnFont) + 56 + 8);
     }
 
     // ---------------------------------------------------------------- internals
@@ -190,7 +305,7 @@ public final class TableCells {
         return cell.getTableView().getItems().get(i);
     }
 
-    private static String pillClass(String s) {
+    public static String pillClass(String s) {
         String t = s.toLowerCase();
         if (t.contains("overdue") || t.contains("late") || t.contains("reject") || t.contains("damag")) return "pill-overdue";
         if (t.contains("maint") || t.contains("repair"))                                                 return "pill-maintenance";
@@ -210,4 +325,4 @@ public final class TableCells {
         String b = p.length > 1 ? p[p.length - 1].substring(0, 1) : "";
         return (a + b).toUpperCase();
     }
-}
+}

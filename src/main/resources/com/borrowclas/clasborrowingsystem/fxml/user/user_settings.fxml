@@ -37,7 +37,7 @@
         <VBox spacing="6">
             <Label text="Username / ID Number" styleClass="modal-label"/>
             <TextField fx:id="txtUsername" promptText="e.g. 2023-01928" styleClass="clean-search-field" editable="false"/>
-            <Label text="Username cannot be changed." styleClass="footer-caption"/>
+            <Label text="To change your username or password, use Login Details below." styleClass="footer-caption"/>
         </VBox>
 
         <VBox spacing="6">
@@ -48,5 +48,18 @@
         <Label fx:id="lblMessage" text="" styleClass="form-message-error" wrapText="true" maxWidth="Infinity"/>
 
         <Button text="Save Profile Changes" styleClass="btn-primary" maxWidth="Infinity" prefHeight="42" onAction="#handleSaveProfile"/>
+    </VBox>
+
+    <!-- LOGIN DETAILS CARD -->
+    <VBox spacing="14" styleClass="main-dashboard-card" maxWidth="520" minWidth="460" maxHeight="-Infinity">
+        <padding>
+            <Insets top="24" right="32" bottom="28" left="32"/>
+        </padding>
+
+        <VBox spacing="3">
+            <Label text="Login Details" styleClass="section-title"/>
+            <Label text="Change the username and password you sign in with." styleClass="page-subtitle" wrapText="true"/>
+        </VBox>
+        <Button text="Change Username / Password" styleClass="btn-secondary" maxWidth="Infinity" prefHeight="42" onAction="#handleChangeCredentials"/>
     </VBox>
 </VBox>

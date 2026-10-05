@@ -54,7 +54,7 @@ public class SuperAdminAuthDialogController extends BaseController {
             return;
         }
 
-        String query = "SELECT user_id FROM users WHERE username = ? AND password = ? AND role = 'SUPER_ADMIN' AND status = 'ACTIVE'";
+        String query = "SELECT user_id FROM users WHERE username = ? AND password = ? AND UPPER(REPLACE(role, '_', '')) = 'SUPERADMIN' AND status = 'ACTIVE'";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -94,4 +94,4 @@ public class SuperAdminAuthDialogController extends BaseController {
         lblMessage.setText(text);
         lblMessage.setStyle(success ? "-fx-text-fill: #10b981;" : "-fx-text-fill: #ef4444;");
     }
-}
+}

@@ -3,11 +3,12 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import util.ReceiptOverlay?>
 
-<VBox spacing="16"
-      xmlns="http://javafx.com/javafx/17"
-      xmlns:fx="http://javafx.com/fxml/1"
-      fx:controller="controller.user.MyBorrowsController">
+<StackPane xmlns="http://javafx.com/javafx/17"
+           xmlns:fx="http://javafx.com/fxml/1"
+           fx:controller="controller.user.MyBorrowsController">
+<VBox spacing="16">
     <padding>
         <Insets top="20" right="20" bottom="20" left="20"/>
     </padding>
@@ -48,6 +49,7 @@
                 <TableColumn fx:id="colBorrowDate" text="BORROW DATE" prefWidth="110"/>
                 <TableColumn fx:id="colDueDate" text="DUE DATE" prefWidth="110"/>
                 <TableColumn fx:id="colStatus" text="STATUS" prefWidth="110"/>
+                <TableColumn fx:id="colReceipt" text="RECEIPT" prefWidth="140" sortable="false"/>
                 <TableColumn fx:id="colAction" text="ACTION" prefWidth="140" resizable="false"/>
             </columns>
             <columnResizePolicy>
@@ -56,3 +58,7 @@
         </TableView>
     </VBox>
 </VBox>
+
+    <!-- DIGITAL RECEIPT -->
+    <ReceiptOverlay fx:id="receiptOverlay"/>
+</StackPane>
