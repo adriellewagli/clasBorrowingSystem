@@ -20,8 +20,6 @@ public class DatabaseConnection {
 
     private static boolean schemaChecked = false;
 
-    private static boolean schemaChecked = false;
-
     public static Connection getConnection() throws SQLException {
         Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
         ensureSchema(conn);
