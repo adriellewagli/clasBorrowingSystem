@@ -5,6 +5,7 @@ import com.github.sarxos.webcam.WebcamResolution;
 import controller.BaseController;
 import dao.EquipmentDAO;
 import dao.EquipmentDAOImpl;
+import util.NameValidator;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -82,6 +83,7 @@ public class BorrowRequestCartController extends BaseController {
 
     @FXML
     public void initialize() {
+        NameValidator.restrict(txtBorrowerName);
         if (txtCourse != null) txtCourse.setItems(clasPrograms);
         if (txtDepartment != null) txtDepartment.setItems(clasPrograms);
 
@@ -345,9 +347,10 @@ public class BorrowRequestCartController extends BaseController {
             return;
         }
 
-        String borrowerName = txtBorrowerName.getText().trim();
-        if (borrowerName.isEmpty()) {
-            lblErrorMsg.setText("Please enter full borrower name.");
+        String borrowerName = txtBorrowerName.getText().trim().replaceAll("\\s+", " ");
+        String nameError = NameValidator.validate(borrowerName);
+        if (nameError != null) {
+            lblErrorMsg.setText(nameError);
             return;
         }
 

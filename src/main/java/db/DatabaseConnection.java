@@ -9,15 +9,15 @@ import java.sql.Statement;
 
 public class DatabaseConnection {
     //laptop only DB NO LAN
-    //private static final String URL = "jdbc:mysql://localhost:3306/clas_borrowing_db";
-    //private static final String USER = "root";
-    //private static final String PASSWORD = ""; // Empty string for default XAMPP setup
+    private static final String URL = "jdbc:mysql://localhost:3306/clas_borrowing_db";
+    private static final String USER = "root";
+    private static final String PASSWORD = ""; // Empty string for default XAMPP setup
 
     // LAN connection DB
-    private static final String HOST = System.getProperty("clas.db.host", "localhost");
-    private static final String URL  = "jdbc:mysql://" + HOST + ":3306/clas_borrowing_db";
-    private static final String USER = System.getProperty("clas.db.user", "root");
-    private static final String PASSWORD = System.getProperty("clas.db.pass", "");
+    //private static final String HOST = System.getProperty("clas.db.host", "localhost");
+   // private static final String URL  = "jdbc:mysql://" + HOST + ":3306/clas_borrowing_db";
+  //  private static final String USER = System.getProperty("clas.db.user", "root");
+//private static final String PASSWORD = System.getProperty("clas.db.pass", "");
 
     private static boolean schemaChecked = false;
 
