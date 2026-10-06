@@ -1,6 +1,7 @@
 package controller.user;
 
 import controller.BaseController;
+import javafx.application.Platform;
 import dao.EquipmentDAO;
 import dao.EquipmentDAOImpl;
 import javafx.collections.FXCollections;
@@ -116,11 +117,16 @@ public class MyBorrowsController extends BaseController {
         // Only flags the item as "Pending Return" - the admin finishes the return in Process Returns.
         boolean success = equipmentDAO.requestReturn(item.getBorrowId(), userId);
 
-        if (success) {
+                if (success) {
             showSuccessDialog("Return Requested",
                     "'" + item.getEquipmentName() + "' is now waiting for an admin to check it in.");
-            loadEquipmentData();
+            Platform.runLater(() -> {
+                loadEquipmentData();
+                tblActiveBorrows.refresh();
+            });
+
         } else {
+
             showErrorDialog("Return Error", "Could not request the return. Please refresh and try again.");
         }
     }
@@ -139,4 +145,4 @@ public class MyBorrowsController extends BaseController {
     private void handleRefresh(ActionEvent event) {
         loadEquipmentData();
     }
-}
+}

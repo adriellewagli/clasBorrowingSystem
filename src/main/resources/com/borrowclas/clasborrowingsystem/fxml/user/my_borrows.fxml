@@ -31,7 +31,7 @@
 
     <!-- HEADER & REFRESH BAR -->
     <HBox alignment="CENTER_LEFT" spacing="12">
-        <Label text="Active Equipment Borrowings" styleClass="header-title"/>
+        <Label text="Active Equipment Borrowings" styleClass="header-title" style="-fx-text-fill: #0f172a;"/>
         <Region HBox.hgrow="ALWAYS"/>
         <Button text="🔄 Refresh" styleClass="filter-chip" onAction="#handleRefresh"/>
     </HBox>

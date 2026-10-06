@@ -6,7 +6,7 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.layout.StackPane?>
 
-<VBox alignment="CENTER" spacing="16" stylesheets="@/com/borrowclas/clasborrowingsystem/css/dashboard.css"
+<VBox alignment="CENTER" spacing="16"
       style="-fx-background-color: white; -fx-background-radius: 12; -fx-border-color: #e5e7eb; -fx-border-radius: 12; -fx-border-width: 1;"
       xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="controller.dialog.SuccessDialogController">
@@ -27,9 +27,10 @@
     </VBox>
 
     <!-- Action Button -->
-    <Button text="Awesome" onAction="#handleClose" styleClass="btn-primary" prefWidth="140" style="-fx-font-size: 14px; -fx-padding: 8 16 8 16;">
+    <Button text="Awesome" onAction="#handleClose" prefWidth="140"
+            style="-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-weight: 700; -fx-font-size: 14px; -fx-padding: 8 16 8 16; -fx-background-radius: 8; -fx-cursor: hand;">
         <VBox.margin>
             <Insets top="10"/>
         </VBox.margin>
     </Button>
-</VBox>
+    </VBox>
