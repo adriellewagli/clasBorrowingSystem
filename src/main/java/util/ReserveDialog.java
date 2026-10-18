@@ -39,7 +39,7 @@ public final class ReserveDialog {
         title.getStyleClass().add("modal-title");
 
         Label subtitle = new Label("This item is not available right now. Reserve it for a later date - an admin will "
-                + "approve the reservation and set the borrowing fee. Earliest pick-up: " + earliest + ".");
+                + "approve the reservation. Earliest pick-up: " + earliest + ".");
         subtitle.getStyleClass().add("page-subtitle");
         subtitle.setWrapText(true);
         subtitle.setMinHeight(Region.USE_PREF_SIZE);

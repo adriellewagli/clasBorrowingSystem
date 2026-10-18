@@ -5,6 +5,7 @@ import db.DbHealth;
 import model.BorrowedItem;
 import model.DamageReport;
 import model.Equipment;
+import model.ItemFee;
 import model.ItemUsage;
 import model.Receipt;
 
@@ -23,6 +24,9 @@ import java.util.Map;
 
 public class EquipmentDAOImpl implements EquipmentDAO {
 
+    /** Upper limit the Super Admin can set for a fee (keeps a typing slip from saving a silly amount). */
+    private static final double MAX_FEE = 100_000;
+
     /** Which screen the rows are for - decides the wording of the status label. */
     private enum Mode { AUDIT, USER_ACTIVE, USER_HISTORY, ADMIN_ACTIVE, RETURN_QUEUE, PENDING }
 
@@ -32,6 +36,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             "t.borrower_name, t.borrower_type, t.borrower_id_number, " +
             "t.date_borrowed, t.expected_return_date, t.actual_return_date, t.return_requested_on, " +
             "t.status AS tx_status, t.total_fee_charged, t.late_penalty_per_day, t.late_fee_charged, t.approved_at, " +
+            "e.borrow_fee AS item_borrow_fee, e.late_fee_per_day AS item_late_fee, " +
             "u_req.username AS requester_username, u_proc.username AS processor_username ";
 
     private static final String TX_FROM =
@@ -66,6 +71,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
         // EXISTS (instead of a join) so an item that has several requests still shows up once.
         String sql = "SELECT e.equipment_id AS id, e.item_name AS name, e.category, e.serial_number, " +
+                "e.borrow_fee, e.late_fee_per_day, " +
                 "CASE " +
                 "   WHEN EXISTS (SELECT 1 FROM transactions t WHERE t.equipment_id = e.equipment_id " +
                 "                AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')) THEN 'Checked Out' " +
@@ -81,14 +87,17 @@ public class EquipmentDAOImpl implements EquipmentDAO {
              ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
-                list.add(new Equipment(
+                Equipment eq = new Equipment(
                         rs.getInt("id"),
                         rs.getString("name"),
                         rs.getString("category"),
                         rs.getString("display_status"),
                         rs.getString("serial_number"),
                         1
-                ));
+                );
+                eq.setBorrowFee(rs.getDouble("borrow_fee"));
+                eq.setLateFeePerDay(rs.getDouble("late_fee_per_day"));
+                list.add(eq);
             }
         } catch (SQLException e) {
             DbHealth.readFailed();
@@ -407,7 +416,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         String sql = "SELECT " + TX_COLUMNS + TX_FROM +
                 "WHERE t.requested_by = ? AND UPPER(t.status) IN ('PENDING', 'RESERVED') " +
                 "ORDER BY t.transaction_id DESC";
-        return queryItems(sql, Mode.PENDING, userId);
+        return      queryItems(sql, Mode.PENDING, userId);
     }
 
     @Override
@@ -590,14 +599,25 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     }
 
     /**
-     * Fee set by the admin, and the late penalty:
+     * Borrowing fee and late penalty. The fees are set per item by the Super Admin:
+     *  - waiting for approval -> the item's CURRENT fees (what it will cost if approved now)
+     *  - approved             -> the fees copied onto the transaction when it was approved
+     * The late penalty:
      *  - still out        -> days between the due date and today
      *  - waiting for check-in -> days between the due date and the day the user pressed "Return item"
      *  - returned         -> the penalty that was recorded at check-in
      */
     private static void fillBilling(BorrowedItem item, ResultSet rs, String raw, LocalDate due) throws SQLException {
+        boolean waiting = raw.equals("PENDING") || raw.equals("RESERVED");
+
+        // a rate of 0 is allowed (the Super Admin can make an item free of late fees); only a missing one falls back
         double rate = rs.getDouble("late_penalty_per_day");
-        if (rs.wasNull() || rate <= 0) rate = LATE_PENALTY_PER_DAY;
+        if (rs.wasNull() || rate < 0) rate = LATE_PENALTY_PER_DAY;
+        double fee = rs.getDouble("total_fee_charged");
+        if (waiting) {
+            rate = moneyOrDefault(rs, "item_late_fee", rate);
+            fee = moneyOrDefault(rs, "item_borrow_fee", fee);
+        }
 
         LocalDate actual = date(rs, "actual_return_date");
         LocalDate requestedOn = date(rs, "return_requested_on");
@@ -627,11 +647,22 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
         item.setLateDays(days);
         item.setLatePenalty(penalty);
-        item.setFee(rs.getDouble("total_fee_charged"));
-        item.setFeePending(raw.equals("PENDING") || raw.equals("RESERVED"));
+        item.setFee(fee);
+        item.setFeePending(false);
+        item.setLatePenaltyPerDay(rate);
 
         Timestamp ts = rs.getTimestamp("approved_at");
         if (ts != null) item.setApprovedAt(ts.toLocalDateTime());
+    }
+
+    /** Reads a money column that may be NULL or missing; returns {@code fallback} in that case. */
+    private static double moneyOrDefault(ResultSet rs, String column, double fallback) {
+        try {
+            double v = rs.getDouble(column);
+            return (rs.wasNull() || v < 0) ? fallback : v;
+        } catch (SQLException e) {
+            return fallback;
+        }
     }
 
     private static long daysLate(LocalDate due, LocalDate until) {
@@ -690,21 +721,71 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         return list;
     }
 
+    // ================================================================== super admin: item fees
+
+    @Override
+    public List<ItemFee> getItemFees() {
+        List<ItemFee> list = new ArrayList<>();
+        String sql = "SELECT equipment_id, item_name, category, serial_number, borrow_fee, late_fee_per_day " +
+                "FROM equipment ORDER BY item_name ASC, serial_number ASC, equipment_id ASC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                list.add(new ItemFee(
+                        rs.getInt("equipment_id"),
+                        rs.getString("item_name"),
+                        rs.getString("category"),
+                        rs.getString("serial_number"),
+                        rs.getDouble("borrow_fee"),
+                        rs.getDouble("late_fee_per_day")));
+            }
+        } catch (SQLException e) {
+            DbHealth.readFailed();
+            System.err.println("[EquipmentDAOImpl Error] Failed to load item fees: " + e.getMessage());
+        }
+        return list;
+    }
+
+    @Override
+    public String updateItemFees(int equipmentId, double borrowFee, double lateFeePerDay) {
+        if (Double.isNaN(borrowFee) || Double.isNaN(lateFeePerDay) || borrowFee < 0 || lateFeePerDay < 0) {
+            return "Fees can't be negative.";
+        }
+        if (borrowFee > MAX_FEE || lateFeePerDay > MAX_FEE) {
+            return "A fee can't be more than " + (long) MAX_FEE + ".";
+        }
+
+        String sql = "UPDATE equipment SET borrow_fee = ?, late_fee_per_day = ? WHERE equipment_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setDouble(1, borrowFee);
+            stmt.setDouble(2, lateFeePerDay);
+            stmt.setInt(3, equipmentId);
+            return stmt.executeUpdate() > 0 ? null : "That item no longer exists. Refresh the list.";
+
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to update fees for item " + equipmentId + ": " + e.getMessage());
+            return "Database error: could not save the fees.";
+        }
+    }
+
     // ================================================================== approve / reject
 
     @Override
     public boolean approveBorrowRequest(int transactionId, int equipmentId, int adminUserId) {
-        return approveBorrow(transactionId, equipmentId, adminUserId, 0.0) == null;
+        return approveBorrow(transactionId, equipmentId, adminUserId) == null;
     }
 
     @Override
-    public String approveBorrow(int transactionId, int equipmentId, int adminUserId, double fee) {
-        if (fee < 0) return "The borrowing fee can't be negative.";
-
+    public String approveBorrow(int transactionId, int equipmentId, int adminUserId) {
         String updateTxSql = "UPDATE transactions SET " +
                 // date_borrowed is set before status on purpose: MySQL applies SET items left to right
                 "date_borrowed = CASE WHEN UPPER(status) = 'RESERVED' THEN CURDATE() ELSE date_borrowed END, " +
-                "status = 'BORROWED', processed_by = ?, total_fee_charged = ?, approved_at = NOW() " +
+                "status = 'BORROWED', processed_by = ?, total_fee_charged = ?, late_penalty_per_day = ?, approved_at = NOW() " +
                 "WHERE transaction_id = ?";
         String updateEqSql = "UPDATE equipment SET status = 'BORROWED' WHERE equipment_id = ?";
 
@@ -733,8 +814,12 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 return "The requested return date has already passed. Reject this request and ask for a new one.";
             }
 
+            // The item's fees as they are right now - they are copied onto the transaction below, so a later
+            // change in the Fees & Penalties tab does not alter an item that is already out.
+            double borrowFee = 0.0;
+            double lateRate = LATE_PENALTY_PER_DAY;
             try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT status FROM equipment WHERE equipment_id = ? FOR UPDATE")) {
+                    "SELECT status, borrow_fee, late_fee_per_day FROM equipment WHERE equipment_id = ? FOR UPDATE")) {
                 ps.setInt(1, equipmentId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) { conn.rollback(); return "That item no longer exists."; }
@@ -743,6 +828,10 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                         conn.rollback();
                         return "This item is under maintenance, so it can't be handed out.";
                     }
+                    borrowFee = rs.getDouble("borrow_fee");
+                    if (rs.wasNull() || borrowFee < 0) borrowFee = 0.0;
+                    lateRate = rs.getDouble("late_fee_per_day");
+                    if (rs.wasNull() || lateRate < 0) lateRate = LATE_PENALTY_PER_DAY;
                 }
             }
 
@@ -763,8 +852,9 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                  PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
 
                 stmtTx.setInt(1, adminUserId);
-                stmtTx.setDouble(2, fee);
-                stmtTx.setInt(3, transactionId);
+                stmtTx.setDouble(2, borrowFee);
+                stmtTx.setDouble(3, lateRate);
+                stmtTx.setInt(4, transactionId);
                 stmtTx.executeUpdate();
 
                 stmtEq.setInt(1, equipmentId);
@@ -863,7 +953,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         // MySQL applies SET items left to right and actual_return_date is assigned right after it.
         String updateTxSql = "UPDATE transactions SET status = 'RETURNED', " +
                 "late_fee_charged = GREATEST(0, DATEDIFF(COALESCE(return_requested_on, CURDATE()), expected_return_date)) " +
-                "                   * COALESCE(NULLIF(late_penalty_per_day, 0), ?), " +
+                "                   * COALESCE(late_penalty_per_day, ?), " +
                 "actual_return_date = COALESCE(return_requested_on, CURDATE()), " +
                 "processed_by = ?, return_condition = ?, damage_report = ? " +
                 "WHERE transaction_id = ? AND UPPER(status) = 'PENDING RETURN'";

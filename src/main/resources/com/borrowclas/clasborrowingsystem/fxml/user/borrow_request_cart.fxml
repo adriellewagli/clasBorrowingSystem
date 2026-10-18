@@ -50,12 +50,12 @@
                 <HBox alignment="CENTER_LEFT">
                     <Label text="Borrowing fee" styleClass="fee-value"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Label fx:id="lblCalculatedFee" text="Set by admin" styleClass="fee-value"/>
+                    <Label fx:id="lblCalculatedFee" text="₱0.00" styleClass="fee-value"/>
                 </HBox>
                 <HBox alignment="CENTER_LEFT">
                     <Label text="Late return penalty" styleClass="fee-label"/>
                     <Region HBox.hgrow="ALWAYS"/>
-                    <Label text="₱50.00 per day per item" styleClass="fee-label"/>
+                    <Label fx:id="lblLatePenalty" text="—" styleClass="fee-label"/>
                 </HBox>
             </VBox>
         </VBox>

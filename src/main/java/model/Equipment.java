@@ -10,6 +10,9 @@ public class Equipment {
     private int quantity;
     /** Only used while the item sits in the borrow cart: this item's own return deadline. */
     private java.time.LocalDate returnDate;
+    /** What it costs to borrow this item, and the late fee per day (both set by the Super Admin). */
+    private double borrowFee;
+    private double lateFeePerDay = 50.00;
 
     public Equipment() {}
 
@@ -105,6 +108,22 @@ public class Equipment {
 
     public void setReturnDate(java.time.LocalDate returnDate) {
         this.returnDate = returnDate;
+    }
+
+    public double getBorrowFee() {
+        return borrowFee;
+    }
+
+    public void setBorrowFee(double borrowFee) {
+        this.borrowFee = borrowFee;
+    }
+
+    public double getLateFeePerDay() {
+        return lateFeePerDay;
+    }
+
+    public void setLateFeePerDay(double lateFeePerDay) {
+        this.lateFeePerDay = lateFeePerDay;
     }
 
     private static int parseIdSafely(String val) {

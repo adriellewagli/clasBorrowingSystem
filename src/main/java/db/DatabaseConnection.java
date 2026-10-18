@@ -13,11 +13,14 @@ public class DatabaseConnection {
     private static final String USER = "root";
     private static final String PASSWORD = ""; // Empty string for default XAMPP setup
 
-    // LAN connection DB
-    //private static final String HOST = System.getProperty("clas.db.host", "localhost");
-   // private static final String URL  = "jdbc:mysql://" + HOST + ":3306/clas_borrowing_db";
-  //  private static final String USER = System.getProperty("clas.db.user", "root");
-//private static final String PASSWORD = System.getProperty("clas.db.pass", "");
+    //LAN connection DB
+
+    /*
+    private static final String HOST = System.getProperty("clas.db.host", "localhost");
+    private static final String URL  = "jdbc:mysql://" + HOST + ":3306/clas_borrowing_db";
+    private static final String USER = System.getProperty("clas.db.user", "root");
+    private static final String PASSWORD = System.getProperty("clas.db.pass", "");
+    */
 
     private static boolean schemaChecked = false;
 
@@ -27,7 +30,7 @@ public class DatabaseConnection {
         return conn;
     }
 
-    /**
+    /*
      * Runs once per launch and quietly brings the database up to what the app expects:
      *  - status / role columns that are ENUMs become VARCHAR(20) so new values ('PENDING RETURN',
      *    'MAINTENANCE', 'SUPERADMIN') are accepted. Existing values are kept.

@@ -3,6 +3,7 @@ package dao;
 import model.BorrowedItem;
 import model.DamageReport;
 import model.Equipment;
+import model.ItemFee;
 import model.ItemUsage;
 import model.Receipt;
 import java.time.LocalDate;
@@ -11,7 +12,10 @@ import java.util.Map;
 
 public interface EquipmentDAO {
 
-    /** Late penalty charged for every day an item stays out past its own due date. */
+    /**
+     * Default late penalty per day. Each item has its own rate (set by the Super Admin in the
+     * Fees & Penalties tab); this is only the starting value for new items and the fallback.
+     */
     double LATE_PENALTY_PER_DAY = 50.00;
 
     boolean addEquipment(Equipment equipment);
@@ -39,8 +43,8 @@ public interface EquipmentDAO {
     );
 
     /**
-     * Older entry point: one return date for every item. The fee argument is ignored now - the admin
-     * sets the borrowing fee when approving.
+     * Older entry point: one return date for every item. The fee argument is ignored now - each item's
+     * borrowing fee is set by the Super Admin.
      */
     boolean createBatchBorrowRequest(
             List<Integer> equipmentIds,
@@ -56,7 +60,7 @@ public interface EquipmentDAO {
 
     /**
      * Record a borrow request where EVERY item has its own return date (equipment id -> due date).
-     * Each item becomes its own PENDING transaction; the fee stays unset until an admin approves it.
+     * Each item becomes its own PENDING transaction; the item's fees are applied when an admin approves it.
      */
     boolean createBatchBorrowRequest(
             List<Integer> equipmentIds,
@@ -164,14 +168,26 @@ public interface EquipmentDAO {
     /** Items ranked by how many times they have been borrowed (most used first). */
     List<ItemUsage> getMostUsedEquipment();
 
-    /** Approve a pending request without setting a fee (fee stays 0). Kept for older callers. */
+    /** Approve a pending request. Kept for older callers - same as {@link #approveBorrow}. */
     boolean approveBorrowRequest(int transactionId, int equipmentId, int adminUserId);
 
     /**
-     * Approve a pending request or reservation and set what the borrower pays.
+     * Approve a pending request or reservation. The borrowing fee and the late fee per day are copied
+     * from the item's current settings (Fees & Penalties tab) onto the transaction, so changing the
+     * fees later does not affect items that are already out.
      * @return null on success, otherwise a message explaining why it could not be approved
      */
-    String approveBorrow(int transactionId, int equipmentId, int adminUserId, double fee);
+    String approveBorrow(int transactionId, int equipmentId, int adminUserId);
+
+    /** Super Admin: every item with its borrowing fee and late fee per day. */
+    List<ItemFee> getItemFees();
+
+    /**
+     * Super Admin: set one item's borrowing fee and late fee per day (0 is allowed). Applies to requests
+     * approved from now on; items already borrowed keep the fees they were approved with.
+     * @return null on success, otherwise a message explaining why it could not be saved
+     */
+    String updateItemFees(int equipmentId, double borrowFee, double lateFeePerDay);
 
     /** Reject a pending borrow request and record the rejecting admin ID */
     boolean rejectBorrowRequest(int transactionId, int equipmentId, int adminUserId);

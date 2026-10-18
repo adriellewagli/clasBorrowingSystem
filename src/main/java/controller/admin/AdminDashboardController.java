@@ -49,6 +49,7 @@ public class AdminDashboardController extends BaseController {
     @FXML private Button btnNavMaintenance;
     @FXML private Button btnNavHistory;
     @FXML private Button btnNavAccounts;
+    @FXML private Button btnNavFees;
     @FXML private Button btnNavUsage;
     @FXML private StackPane dynamicContentArea;
     @FXML private VBox returnsViewContainer;
@@ -109,6 +110,11 @@ public class AdminDashboardController extends BaseController {
             if (btnNavAccounts != null) {
                 btnNavAccounts.setVisible(superAdmin);
                 btnNavAccounts.setManaged(superAdmin);
+            }
+            // ...and the fees tab, where the Super Admin sets each item's borrowing fee and late fee
+            if (btnNavFees != null) {
+                btnNavFees.setVisible(superAdmin);
+                btnNavFees.setManaged(superAdmin);
             }
         }
 
@@ -271,7 +277,7 @@ public class AdminDashboardController extends BaseController {
         if (isOverdue) {
             lblLateFeeWarning.setText(String.format("Returned %d day%s late. Late penalty: \u20B1%,.2f (\u20B1%,.2f per day).",
                     transaction.getLateDays(), transaction.getLateDays() == 1 ? "" : "s",
-                    transaction.getLatePenalty(), EquipmentDAO.LATE_PENALTY_PER_DAY));
+                    transaction.getLatePenalty(), transaction.getLatePenaltyPerDay()));
         }
         lblLateFeeWarning.setVisible(isOverdue);
         lblLateFeeWarning.setManaged(isOverdue);
@@ -470,6 +476,27 @@ public class AdminDashboardController extends BaseController {
     }
 
     @FXML
+    private void handleViewFees(ActionEvent event) {
+        if (isNavigating || currentActiveButton == btnNavFees) return;
+        UserSession session = UserSession.getInstance();
+        if (session == null || !session.isSuperAdmin()) return;
+
+        try {
+            // loaded fresh each time so the fees shown are current
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/superadmin/fee_settings.fxml"));
+            Node feesView = loader.load();
+
+            updateActiveSidebarButton(btnNavFees);
+            if (dynamicContentArea != null) {
+                switchViewWithLock(feesView);
+            }
+        } catch (IOException e) {
+            System.err.println("[AdminDashboardController] Error loading fee_settings.fxml: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    @FXML
     private void handleChangeCredentials(ActionEvent event) {
         CredentialsDialog.show(btnNavHistory.getScene().getWindow(), false);
     }
@@ -489,7 +516,7 @@ public class AdminDashboardController extends BaseController {
 
     private void updateActiveSidebarButton(Button activeButton) {
         currentActiveButton = activeButton;
-        Button[] buttons = {btnNavReturns, btnNavRequests, btnNavInventory, btnNavMaintenance, btnNavHistory, btnNavUsage, btnNavAccounts};
+        Button[] buttons = {btnNavReturns, btnNavRequests, btnNavInventory, btnNavMaintenance, btnNavHistory, btnNavUsage, btnNavAccounts, btnNavFees};
         for (Button btn : buttons) {
             if (btn != null) {
                 btn.getStyleClass().remove("sidebar-btn-active");

@@ -97,6 +97,6 @@ final class CssMeasure {
         l.applyCss();
         double w = Math.ceil(l.prefWidth(-1)) + SAFETY;
         cache.put(key, w);
-        return w;
+        return w;   
     }
 }

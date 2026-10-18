@@ -49,6 +49,7 @@ public class BorrowRequestCartController extends BaseController {
 
     @FXML private Label lblQueueCount;
     @FXML private Label lblCalculatedFee;
+    @FXML private Label lblLatePenalty;
 
     @FXML private RadioButton radioStudent;
     @FXML private RadioButton radioFaculty;
@@ -110,7 +111,7 @@ public class BorrowRequestCartController extends BaseController {
             TableCells.fitColumns(tblCart);
         }
 
-        if (lblCalculatedFee != null) lblCalculatedFee.setText("Set by admin");
+        showFees();
     }
 
     // ------------------------------------------------------------ cart data
@@ -147,6 +148,36 @@ public class BorrowRequestCartController extends BaseController {
     private void updateQueueSummary() {
         int count = (sharedCartList != null) ? sharedCartList.size() : 0;
         if (lblQueueCount != null) lblQueueCount.setText(count + (count == 1 ? " Item" : " Items"));
+        showFees();
+    }
+
+    /**
+     * The borrowing fee of everything in the queue, and the late fee per day. Both are set per item
+     * by the Super Admin (Fees & Penalties tab); the amount is final once an admin approves the request.
+     */
+    private void showFees() {
+        double total = 0;
+        double minLate = Double.MAX_VALUE;
+        double maxLate = 0;
+        int n = 0;
+        if (sharedCartList != null) {
+            for (Equipment e : sharedCartList) {
+                total += e.getBorrowFee();
+                minLate = Math.min(minLate, e.getLateFeePerDay());
+                maxLate = Math.max(maxLate, e.getLateFeePerDay());
+                n++;
+            }
+        }
+        if (lblCalculatedFee != null) lblCalculatedFee.setText(String.format("\u20B1%,.2f", total));
+        if (lblLatePenalty != null) {
+            if (n == 0) {
+                lblLatePenalty.setText("\u2014");
+            } else if (minLate == maxLate) {
+                lblLatePenalty.setText(String.format("\u20B1%,.2f per day per item", maxLate));
+            } else {
+                lblLatePenalty.setText(String.format("\u20B1%,.2f to \u20B1%,.2f per day per item", minLate, maxLate));
+            }
+        }
     }
 
     private void removeItem(Equipment item) {

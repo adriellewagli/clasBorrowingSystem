@@ -21,8 +21,9 @@ public class BorrowedItem {
 
     // --- billing ---
     private String requestType = "Borrow";   // "Borrow" or "Reservation"
-    private double fee;                      // set by the admin when approving
-    private boolean feePending;              // true until the admin has set the fee
+    private double fee;                      // this item's borrowing fee (set by the Super Admin)
+    private boolean feePending;              // no longer used: the fee is known from the start (always false)
+    private double latePenaltyPerDay;        // this item's late fee per day (set by the Super Admin)
     private long lateDays;                   // days past the due date
     private double latePenalty;              // lateDays x penalty per day
     private LocalDateTime approvedAt;
@@ -103,6 +104,9 @@ public class BorrowedItem {
     public boolean isFeePending() { return feePending; }
     public void setFeePending(boolean feePending) { this.feePending = feePending; }
 
+    public double getLatePenaltyPerDay() { return latePenaltyPerDay; }
+    public void setLatePenaltyPerDay(double latePenaltyPerDay) { this.latePenaltyPerDay = latePenaltyPerDay; }
+
     public long getLateDays() { return lateDays; }
     public void setLateDays(long lateDays) { this.lateDays = lateDays; }
 
@@ -112,7 +116,7 @@ public class BorrowedItem {
     public LocalDateTime getApprovedAt() { return approvedAt; }
     public void setApprovedAt(LocalDateTime approvedAt) { this.approvedAt = approvedAt; }
 
-    /** Text for the FEE column: the admin sets it on approval, so it reads "To be set" before that. */
+    /** Text for the FEE column: the item's borrowing fee (the Super Admin sets it per item). */
     public String getFeeText() {
         return feePending ? "To be set" : money(fee);
     }

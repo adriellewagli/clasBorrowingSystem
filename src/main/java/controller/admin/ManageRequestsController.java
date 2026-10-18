@@ -99,12 +99,11 @@ public class ManageRequestsController extends BaseController {
         if (item == null) return;
         javafx.stage.Window owner = tblRequests.getScene() != null ? tblRequests.getScene().getWindow() : null;
 
-        // "Are you sure?" pop-up - the admin also sets this item's borrowing fee here.
-        java.util.OptionalDouble fee = ApproveBorrowDialog.show(owner, item, EquipmentDAO.LATE_PENALTY_PER_DAY);
-        if (fee.isEmpty()) return;
+        // "Are you sure?" pop-up - the fees come from the item's settings (Super Admin > Fees & Penalties).
+        if (!ApproveBorrowDialog.show(owner, item)) return;
 
         int adminId = UserSession.getInstance().getUserId();
-        String error = equipmentDAO.approveBorrow(item.getBorrowId(), item.getEquipmentId(), adminId, fee.getAsDouble());
+        String error = equipmentDAO.approveBorrow(item.getBorrowId(), item.getEquipmentId(), adminId);
         loadRequests();
         if (error != null) {
             showErrorDialog("Could not approve", error);
