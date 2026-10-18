@@ -36,6 +36,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+// Imports for auto-approve and custom PDF receipt dialog
+import model.BorrowedItem;
+import model.Receipt;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import controller.dialog.ReceiptDialogController;
+import controller.dialog.ReceiptDialogController.PrintOption;
+
 public class BorrowRequestCartController extends BaseController {
 
     private static final int DEFAULT_DAYS = 3;
@@ -361,7 +369,7 @@ public class BorrowRequestCartController extends BaseController {
         handleRetakeSnap();
     }
 
-    // ------------------------------------------------------------ submit
+    // ------------------------------------------------------------ submit (MODIFIED FOR AUTO-APPROVE)
 
     @FXML
     private void handleConfirmCommit(ActionEvent event) {
@@ -416,7 +424,6 @@ public class BorrowRequestCartController extends BaseController {
         }
 
         byte[] snapshotBytes = getSnapshotBytes();
-
         UserSession session = UserSession.getInstance();
         int activeUserId = (session != null && session.getUserId() > 0) ? session.getUserId() : 1;
 
@@ -428,24 +435,79 @@ public class BorrowRequestCartController extends BaseController {
         submitting = true;
         javafx.scene.Node source = event != null && event.getSource() instanceof javafx.scene.Node n ? n : null;
         if (source != null) source.setDisable(true);
-        String error;
+
+        String error = null;
+        int approvedCount = 0;
+        List<Receipt> generatedReceipts = new java.util.ArrayList<>();
+
         try {
+            // 1. Submit the request (creates the PENDING entries)
             error = equipmentDAO.submitBatchBorrowRequest(
                     eqIds, dueDates, borrowerName, borrowerType, borrowerId, dept, activeUserId, snapshotBytes);
+
+            if (error == null) {
+                // 2. Fetch the newly created pending requests for this user
+                List<BorrowedItem> pendingRequests = equipmentDAO.getPendingRequestsForUser(activeUserId);
+
+                for (BorrowedItem item : pendingRequests) {
+                    // Only process items that were part of this specific cart checkout
+                    if (eqIds.contains(item.getEquipmentId())) {
+
+                        // 3. Auto-approve immediately, bypassing the admin dialog
+                        String approveErr = equipmentDAO.approveBorrow(item.getTransactionId(), item.getEquipmentId(), activeUserId);
+
+                        if (approveErr == null) {
+                            approvedCount++;
+                            // 4. Store the receipt data in our list instead of printing immediately
+                            Receipt r = equipmentDAO.getReceiptForTransaction(item.getTransactionId());
+                            if (r != null) {
+                                generatedReceipts.add(r);
+                            }
+                        }
+                    }
+                }
+            }
         } finally {
             submitting = false;
             if (source != null) source.setDisable(false);
         }
-        boolean success = error == null;
 
-        if (success) {
+        if (error == null) {
             closeWebcam();
             sharedCartList.clear();
             updateQueueSummary();
             clearFormInputs();
             lblErrorMsg.setText("");
-            showSuccessDialog("Request Submitted",
-                    "Your borrow request has been logged. An admin will review it and set the borrowing fee.");
+
+            // 5. Show the Custom Confirmation Pop-up for Printing
+            String successMsg = "Success! " + approvedCount + " items were processed.\nWould you like to print your receipt?";
+            PrintOption choice = ReceiptDialogController.show(
+                    "Request Auto-Approved",
+                    successMsg,
+                    tblCart.getScene().getWindow()
+            );
+
+            if (choice == PrintOption.COMBINED && !generatedReceipts.isEmpty()) {
+                try {
+                    Path path = Paths.get(System.getProperty("user.home"), "Downloads", "Combined_Receipt_" + System.currentTimeMillis() + ".pdf");
+                    util.CombinedReceiptPdf.write(generatedReceipts, path);
+                    if (java.awt.Desktop.isDesktopSupported()) java.awt.Desktop.getDesktop().open(path.toFile());
+                } catch (IOException e) {
+                    System.err.println("Failed to open combined PDF: " + e.getMessage());
+                }
+            } else if (choice == PrintOption.INDIVIDUAL) {
+                for (Receipt r : generatedReceipts) {
+                    try {
+                        Path path = Paths.get(System.getProperty("user.home"), "Downloads", "Receipt_" + r.receiptNumber() + ".pdf");
+                        util.ReceiptPdf.write(r, path);
+                        if (java.awt.Desktop.isDesktopSupported()) java.awt.Desktop.getDesktop().open(path.toFile());
+                    } catch (IOException e) {
+                        System.err.println("Failed to open individual PDF: " + e.getMessage());
+                    }
+                }
+            }
+            // If PrintOption.NONE, do nothing.
+
         } else {
             lblErrorMsg.setText(error);
         }

@@ -211,20 +211,20 @@ public final class ReceiptPdf {
 
     private void text(String s, double x, double yy, double size, boolean bold, double r, double g, double b) {
         page.append(num(r)).append(' ').append(num(g)).append(' ').append(num(b)).append(" rg\n")
-            .append("BT /").append(bold ? "F2" : "F1").append(' ').append(num(size)).append(" Tf ")
-            .append(num(x)).append(' ').append(num(yy)).append(" Td (")
-            .append(escape(clean(s))).append(") Tj ET\n");
+                .append("BT /").append(bold ? "F2" : "F1").append(' ').append(num(size)).append(" Tf ")
+                .append(num(x)).append(' ').append(num(yy)).append(" Td (")
+                .append(escape(clean(s))).append(") Tj ET\n");
     }
 
     private void fillRect(double x, double yy, double w, double h, double r, double g, double b) {
         page.append(num(r)).append(' ').append(num(g)).append(' ').append(num(b)).append(" rg\n")
-            .append(num(x)).append(' ').append(num(yy)).append(' ').append(num(w)).append(' ').append(num(h)).append(" re f\n");
+                .append(num(x)).append(' ').append(num(yy)).append(' ').append(num(w)).append(' ').append(num(h)).append(" re f\n");
     }
 
     private void line(double x1, double y1, double x2, double y2, double r, double g, double b) {
         page.append(num(r)).append(' ').append(num(g)).append(' ').append(num(b)).append(" RG 0.8 w\n")
-            .append(num(x1)).append(' ').append(num(y1)).append(" m ")
-            .append(num(x2)).append(' ').append(num(y2)).append(" l S\n");
+                .append(num(x1)).append(' ').append(num(y1)).append(" m ")
+                .append(num(x2)).append(' ').append(num(y2)).append(" l S\n");
     }
 
     private static String escape(String s) {
@@ -264,7 +264,7 @@ public final class ReceiptPdf {
         StringBuilder x = new StringBuilder("xref\n0 " + (objects.size() + 1) + "\n0000000000 65535 f \n");
         for (int off : offsets) x.append(String.format("%010d 00000 n \n", off));
         x.append("trailer\n<< /Size ").append(objects.size() + 1).append(" /Root 1 0 R >>\nstartxref\n")
-         .append(xref).append("\n%%EOF\n");
+                .append(xref).append("\n%%EOF\n");
         out.write(ascii(x.toString()));
         return out.toByteArray();
     }

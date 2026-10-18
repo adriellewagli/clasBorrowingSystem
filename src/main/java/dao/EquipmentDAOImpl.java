@@ -33,17 +33,17 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     /** Columns every transaction list needs (the SQL aliases are what mapRow reads). */
     private static final String TX_COLUMNS =
             "t.transaction_id, e.equipment_id, e.item_name, e.category, e.serial_number, " +
-            "t.borrower_name, t.borrower_type, t.borrower_id_number, " +
-            "t.date_borrowed, t.expected_return_date, t.actual_return_date, t.return_requested_on, " +
-            "t.status AS tx_status, t.total_fee_charged, t.late_penalty_per_day, t.late_fee_charged, t.approved_at, " +
-            "e.borrow_fee AS item_borrow_fee, e.late_fee_per_day AS item_late_fee, " +
-            "u_req.username AS requester_username, u_proc.username AS processor_username ";
+                    "t.borrower_name, t.borrower_type, t.borrower_id_number, " +
+                    "t.date_borrowed, t.expected_return_date, t.actual_return_date, t.return_requested_on, " +
+                    "t.status AS tx_status, t.total_fee_charged, t.late_penalty_per_day, t.late_fee_charged, t.approved_at, " +
+                    "e.borrow_fee AS item_borrow_fee, e.late_fee_per_day AS item_late_fee, " +
+                    "u_req.username AS requester_username, u_proc.username AS processor_username ";
 
     private static final String TX_FROM =
             "FROM transactions t " +
-            "JOIN equipment e ON t.equipment_id = e.equipment_id " +
-            "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
-            "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id ";
+                    "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                    "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
+                    "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id ";
 
     // ================================================================== equipment
 
@@ -255,7 +255,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 }
                 try (PreparedStatement ps = conn.prepareStatement(
                         "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? " +
-                        "AND UPPER(status) IN ('PENDING', 'BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
+                                "AND UPPER(status) IN ('PENDING', 'BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
                     ps.setInt(1, eqId);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next() && rs.getInt(1) > 0) {
@@ -598,15 +598,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         }
     }
 
-    /**
-     * Borrowing fee and late penalty. The fees are set per item by the Super Admin:
-     *  - waiting for approval -> the item's CURRENT fees (what it will cost if approved now)
-     *  - approved             -> the fees copied onto the transaction when it was approved
-     * The late penalty:
-     *  - still out        -> days between the due date and today
-     *  - waiting for check-in -> days between the due date and the day the user pressed "Return item"
-     *  - returned         -> the penalty that was recorded at check-in
-     */
     private static void fillBilling(BorrowedItem item, ResultSet rs, String raw, LocalDate due) throws SQLException {
         boolean waiting = raw.equals("PENDING") || raw.equals("RESERVED");
 
@@ -837,7 +828,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? AND transaction_id <> ? " +
-                    "AND UPPER(status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
+                            "AND UPPER(status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
                 ps.setInt(1, equipmentId);
                 ps.setInt(2, transactionId);
                 try (ResultSet rs = ps.executeQuery()) {
@@ -956,7 +947,8 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 "                   * COALESCE(late_penalty_per_day, ?), " +
                 "actual_return_date = COALESCE(return_requested_on, CURDATE()), " +
                 "processed_by = ?, return_condition = ?, damage_report = ? " +
-                "WHERE transaction_id = ? AND UPPER(status) = 'PENDING RETURN'";
+                "WHERE transaction_id = ? AND UPPER(status) IN ('PENDING RETURN', 'BORROWED', 'ACTIVE', 'APPROVED')";
+
         String updateEqSql = "UPDATE equipment SET status = ? WHERE equipment_id = ?";
 
         String cond = (condition == null || condition.isBlank()) ? null : condition.trim();
@@ -986,7 +978,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 stmtTx.setString(4, report);
                 stmtTx.setInt(5, transactionId);
                 if (stmtTx.executeUpdate() == 0) {
-                    // not in PENDING RETURN (already processed, or the user never clicked Return item)
+                    // already processed
                     conn.rollback();
                     return false;
                 }

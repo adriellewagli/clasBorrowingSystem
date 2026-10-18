@@ -51,6 +51,10 @@ public class BorrowedItem {
     public int getBorrowId() { return borrowId; }
     public void setBorrowId(int borrowId) { this.borrowId = borrowId; }
 
+    // Alias to match the controller's transaction ID calls
+    public int getTransactionId() { return borrowId; }
+    public void setTransactionId(int transactionId) { this.borrowId = transactionId; }
+
     public int getEquipmentId() { return equipmentId; }
     public void setEquipmentId(int equipmentId) { this.equipmentId = equipmentId; }
 
@@ -89,7 +93,7 @@ public class BorrowedItem {
     public void setStatus(String status) { this.status = status; }
 
     public String getProcessedBy() {
-        return (processedBy != null && !processedBy.isBlank()) ? processedBy : "Pending";
+        return (processedBy != null && !processedBy.isBlank()) ? processedBy : "System Auto-Approved";
     }
     public void setProcessedBy(String processedBy) { this.processedBy = processedBy; }
 
@@ -135,12 +139,13 @@ public class BorrowedItem {
             case "reserved":  return "Reserved for pick-up on " + (borrowDate == null ? "-" : borrowDate);
             case "rejected":  return "Request was rejected";
             case "cancelled": return "Cancelled by you";
+            case "approved":  return "Auto-approved";
             default: break;
         }
         StringBuilder sb = new StringBuilder("Fee " + money(fee));
         if (latePenalty > 0) {
             sb.append(" + late penalty ").append(money(latePenalty))
-              .append(" (").append(lateDays).append(lateDays == 1 ? " day" : " days").append(" late)");
+                    .append(" (").append(lateDays).append(lateDays == 1 ? " day" : " days").append(" late)");
         }
         return sb.toString();
     }

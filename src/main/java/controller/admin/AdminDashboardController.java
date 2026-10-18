@@ -32,6 +32,9 @@ import util.LiveRefresh;
 import util.RequestBadge;
 import util.TableCells;
 
+// Import the new dialog controller
+import controller.dialog.ConfirmDialogController;
+
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
@@ -232,8 +235,8 @@ public class AdminDashboardController extends BaseController {
 
     @FXML
     private void loadTransactionData() {
-        // Only items the borrower has already clicked "Return item" on show up here.
-        transactionList.setAll(equipmentDAO.getPendingReturnTransactions());
+        // Show ALL active checkouts, not just 'Pending Return', so admins can force return anything
+        transactionList.setAll(equipmentDAO.getAllActiveTransactions());
         updateMetrics();
     }
 
@@ -248,7 +251,10 @@ public class AdminDashboardController extends BaseController {
         if (returnsRefreshRunning) return;
         returnsRefreshRunning = true;
         LiveRefresh.background(
-                () -> new ReturnsSnapshot(equipmentDAO.getPendingReturnTransactions(), equipmentDAO.getAllActiveTransactions()),
+                () -> {
+                    List<BorrowedItem> active = equipmentDAO.getAllActiveTransactions();
+                    return new ReturnsSnapshot(active, active);
+                },
                 snap -> {
                     returnsRefreshRunning = false;
                     if (snap == null) return;
@@ -333,6 +339,15 @@ public class AdminDashboardController extends BaseController {
             }
             util.InputRules.setInvalid(txtDamageReport, false);
 
+            // --- CONFIRMATION DIALOG INTEGRATION ---
+            String confirmMsg = String.format("Are you sure you want to finalize the return for '%s'?\n\nCondition marked as: %s", itemName, condition);
+            boolean userSaidYes = ConfirmDialogController.show("Confirm Return", confirmMsg, modalOverlay.getScene().getWindow());
+
+            if (!userSaidYes) {
+                return; // Stop here if the admin clicks Cancel
+            }
+            // ---------------------------------------
+
             // Equipment status is updated in the same DB transaction as the return itself.
             boolean success = equipmentDAO.processReturnRequest(
                     selectedTransaction.getBorrowId(), currentAdminId, needsMaintenance, condition, report);
@@ -343,6 +358,8 @@ public class AdminDashboardController extends BaseController {
                 if (needsMaintenance) {
                     showSuccessDialog("Sent to Maintenance",
                             "'" + itemName + "' was returned and logged in the Maintenance Log.");
+                } else {
+                    showSuccessDialog("Return Successful", "'" + itemName + "' has been successfully checked in.");
                 }
             } else {
                 showErrorDialog("Return Error", "Could not process this return. Please refresh the list and try again.");
@@ -540,4 +557,4 @@ public class AdminDashboardController extends BaseController {
         UserSession.cleanUserSession();
         navigateTo("/com/borrowclas/clasborrowingsystem/fxml/auth/login.fxml");
     }
-}
+}
