@@ -479,9 +479,19 @@ public class BorrowRequestCartController extends BaseController {
             lblErrorMsg.setText("");
 
             String successMsg = "Success! " + approvedCount + " items were processed.\nWould you like to print your receipt?";
+            // Receipt dialog handling...
             PrintOption choice = ReceiptDialogController.show(
                     "Request Auto-Approved",
                     successMsg,
+                    tblCart.getScene().getWindow()
+            );
+
+            // ... (PDF printing logic if selected) ...
+
+            // Trigger the smooth success dialog
+            controller.dialog.SuccessDialogController.show(
+                    "Success!",
+                    approvedCount + " equipment request(s) processed successfully.",
                     tblCart.getScene().getWindow()
             );
 
