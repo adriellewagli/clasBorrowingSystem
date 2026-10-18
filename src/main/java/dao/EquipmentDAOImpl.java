@@ -7,7 +7,11 @@ import model.DamageReport;
 import model.Equipment;
 import model.ItemFee;
 import model.ItemUsage;
+import model.PasswordTicket;
 import model.Receipt;
+import model.BorrowerDetails;
+import model.UserSession;
+
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -69,7 +73,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     public List<Equipment> getAllEquipment() {
         List<Equipment> list = new ArrayList<>();
 
-        // EXISTS (instead of a join) so an item that has several requests still shows up once.
         String sql = "SELECT e.equipment_id AS id, e.item_name AS name, e.category, e.serial_number, " +
                 "e.borrow_fee, e.late_fee_per_day, " +
                 "CASE " +
@@ -111,7 +114,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         List<Equipment> list = new ArrayList<>();
 
         String dbStatus = toDbStatus(status);
-        // Older rows may have been saved as 'IN MAINTENANCE', so accept both spellings.
         String where = "MAINTENANCE".equals(dbStatus) ? "status IN (?, 'IN MAINTENANCE')" : "status = ?";
         String sql = "SELECT equipment_id AS id, item_name AS name, category, status, serial_number, 1 AS quantity " +
                 "FROM equipment WHERE " + where;
@@ -146,7 +148,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         return list;
     }
 
-    /** UI label -> value stored in equipment.status */
     private static String toDbStatus(String uiStatus) {
         if ("Checked Out".equalsIgnoreCase(uiStatus)) return "BORROWED";
         if ("Pending Approval".equalsIgnoreCase(uiStatus)) return "PENDING";
@@ -217,11 +218,8 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
         if (equipmentIds == null || equipmentIds.isEmpty() || returnDates == null) return "Nothing to submit.";
 
-        // the same item can only be requested once per submit
         java.util.List<Integer> ids = new ArrayList<>(new java.util.LinkedHashSet<>(equipmentIds));
 
-        // The fee is set by the admin on approval, so it starts at 0 here.
-        // processed_by starts as the requester so a NOT NULL column never rejects the row.
         String insertSql = "INSERT INTO transactions " +
                 "(equipment_id, requested_by, borrower_name, date_borrowed, expected_return_date, status, processed_by, " +
                 "borrower_type, borrower_id_number, program_or_dept, initial_condition, daily_fee, " +
@@ -235,8 +233,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
             int validUserId = (requestedByUserId > 0) ? requestedByUserId : 1;
 
-            // Lock the item rows, then make sure nobody (including a double-click of this same form)
-            // already has an open request on them.
             for (int eqId : ids) {
                 String name;
                 String eqStatus;
@@ -272,7 +268,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     LocalDate due = returnDates.get(eqId);
                     if (due == null) {
                         conn.rollback();
-                        System.err.println("[EquipmentDAOImpl Error] No return date for equipment " + eqId);
                         return "Choose a return date for every item.";
                     }
                     stmtInsert.setInt(1, eqId);
@@ -303,7 +298,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
             }
             System.err.println("[EquipmentDAOImpl Error] Failed to create borrow requests: " + e.getMessage());
-            e.printStackTrace();
             return "Database error: Could not process request.";
         } finally {
             if (conn != null) {
@@ -319,7 +313,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
     // ================================================================== reservations
 
-    /** Latest due date among requests/borrows that still hold the item (null if nothing does). */
     private static LocalDate latestHold(Connection conn, int equipmentId) throws SQLException {
         String sql = "SELECT MAX(expected_return_date) FROM transactions " +
                 "WHERE equipment_id = ? AND UPPER(status) IN ('PENDING', 'BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')";
@@ -356,16 +349,12 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         if (returnDate.isBefore(pickupDate)) return "The return date can't be before the pick-up date.";
 
         try (Connection conn = DatabaseConnection.getConnection()) {
-
-            double itemFee = 0.0;
             double lateRate = LATE_PENALTY_PER_DAY;
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT status, borrow_fee, late_fee_per_day FROM equipment WHERE equipment_id = ?")) {
                 ps.setInt(1, equipmentId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) return "That item no longer exists.";
-                    itemFee = rs.getDouble("borrow_fee");
-                    if (rs.wasNull() || itemFee < 0) itemFee = 0.0;
                     lateRate = rs.getDouble("late_fee_per_day");
                     if (rs.wasNull() || lateRate < 0) lateRate = LATE_PENALTY_PER_DAY;
                     String st = rs.getString(1) == null ? "" : rs.getString(1).toUpperCase(Locale.ROOT);
@@ -377,19 +366,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
             LocalDate hold = latestHold(conn, equipmentId);
             if (hold != null && !pickupDate.isAfter(hold)) {
-                return "This item is already out or requested until " + hold
-                        + ". Choose a pick-up date after that.";
-            }
-
-            String overlap = "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? AND UPPER(status) = 'RESERVED' " +
-                    "AND NOT (expected_return_date < ? OR date_borrowed > ?)";
-            try (PreparedStatement ps = conn.prepareStatement(overlap)) {
-                ps.setInt(1, equipmentId);
-                ps.setDate(2, java.sql.Date.valueOf(pickupDate));
-                ps.setDate(3, java.sql.Date.valueOf(returnDate));
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next() && rs.getInt(1) > 0) return "This item is already reserved for overlapping dates.";
-                }
+                return "This item is already out or requested until " + hold + ". Choose a pick-up date after that.";
             }
 
             int uid = requestedByUserId > 0 ? requestedByUserId : 1;
@@ -398,7 +375,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     "borrower_type, borrower_id_number, program_or_dept, initial_condition, daily_fee, " +
                     "late_penalty_per_day, total_fee_charged, id_snapshot) " +
                     "VALUES (?, ?, ?, ?, ?, 'RESERVED', ?, ?, ?, ?, 'Good', 0.00, ?, ?, ?)";
-            // totalFee is the price the borrower typed in the reserve form
             try (PreparedStatement ps = conn.prepareStatement(insert)) {
                 ps.setInt(1, equipmentId);
                 ps.setInt(2, uid);
@@ -429,7 +405,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         String sql = "SELECT " + TX_COLUMNS + TX_FROM +
                 "WHERE t.requested_by = ? AND UPPER(t.status) IN ('PENDING', 'RESERVED') " +
                 "ORDER BY t.transaction_id DESC";
-        return      queryItems(sql, Mode.PENDING, userId);
+        return queryItems(sql, Mode.PENDING, userId);
     }
 
     @Override
@@ -445,34 +421,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             System.err.println("[EquipmentDAOImpl Error] Failed to cancel request " + transactionId + ": " + e.getMessage());
             return false;
         }
-    }
-
-    @Override
-    public String cancelRequestResult(int transactionId, int userId) {
-        String sql = "UPDATE transactions SET status = 'CANCELLED' "
-                + "WHERE transaction_id = ? AND requested_by = ? AND UPPER(status) IN ('PENDING', 'RESERVED')";
-        for (int attempt = 0; attempt < 2; attempt++) {
-            try (Connection conn = DatabaseConnection.getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setInt(1, transactionId);
-                stmt.setInt(2, userId);
-                if (stmt.executeUpdate() > 0) return null;
-                return "This request was already approved or rejected by an admin (or belongs to another account), "
-                        + "so it can't be cancelled.";
-            } catch (SQLException e) {
-                System.err.println("[EquipmentDAOImpl Error] Failed to cancel request " + transactionId + ": " + e.getMessage());
-                // the usual cause: the status column is still an ENUM without 'CANCELLED' - repair it and retry once
-                if (attempt == 0) {
-                    String manual = DatabaseConnection.repairStatusColumns();
-                    if (manual != null) {
-                        return "The database refused the change (" + e.getMessage() + "). Ask whoever manages MySQL to run: " + manual;
-                    }
-                } else {
-                    return "The database refused the change: " + e.getMessage();
-                }
-            }
-        }
-        return "Could not cancel the request.";
     }
 
     @Override
@@ -493,7 +441,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
     @Override
     public List<BorrowedItem> getActiveBorrowsForUser(int userId) {
-        // Filters strictly on t.requested_by so items stay visible regardless of who approved them
         String sql = "SELECT " + TX_COLUMNS + TX_FROM +
                 "WHERE t.requested_by = ? " +
                 "AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN') " +
@@ -534,7 +481,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
     @Override
     public List<BorrowedItem> getAllTransactionHistory() {
-        // Most recently approved first; requests that were never approved fall back to their request date.
         String sql = "SELECT " + TX_COLUMNS + TX_FROM +
                 "ORDER BY COALESCE(t.approved_at, t.date_borrowed) DESC, t.transaction_id DESC";
         return queryItems(sql, Mode.AUDIT, null);
@@ -556,8 +502,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         }
         return list;
     }
-
-    // ------------------------------------------------------------------ row mapping
 
     private static BorrowedItem mapRow(ResultSet rs, Mode mode) throws SQLException {
         String raw = upper(rs.getString("tx_status"));
@@ -584,7 +528,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         item.setRequestedBy(requester);
 
         boolean waiting = raw.equals("PENDING") || raw.equals("RESERVED");
-        // While a request is waiting, processed_by only holds a placeholder (the requester), so hide it.
         item.setProcessedBy(waiting ? null : raw.equals("CANCELLED") ? requester : rs.getString("processor_username"));
         item.setRequestType(raw.equals("RESERVED") ? "Reservation" : "Borrow");
 
@@ -614,7 +557,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     private static void fillBilling(BorrowedItem item, ResultSet rs, String raw, LocalDate due) throws SQLException {
         boolean waiting = raw.equals("PENDING") || raw.equals("RESERVED");
 
-        // a rate of 0 is allowed (the Super Admin can make an item free of late fees); only a missing one falls back
         double rate = rs.getDouble("late_penalty_per_day");
         if (rs.wasNull() || rate < 0) rate = LATE_PENALTY_PER_DAY;
         double fee = rs.getDouble("total_fee_charged");
@@ -623,9 +565,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             double perDay = moneyOrDefault(rs, "item_borrow_fee", 0.0);
             LocalDate from = date(rs, "date_borrowed");
             long rentalDays = (due != null && from != null) ? Math.max(1, ChronoUnit.DAYS.between(from, due)) : 1;
-            if (raw.equals("RESERVED") && fee > 0) {
-                // keep the price typed in the reserve form
-            } else {
+            if (!(raw.equals("RESERVED") && fee > 0)) {
                 fee = perDay > 0 ? perDay * rentalDays : fee;
             }
         }
@@ -666,7 +606,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         if (ts != null) item.setApprovedAt(ts.toLocalDateTime());
     }
 
-    /** Reads a money column that may be NULL or missing; returns {@code fallback} in that case. */
     private static double moneyOrDefault(ResultSet rs, String column, double fallback) {
         try {
             double v = rs.getDouble(column);
@@ -676,7 +615,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         }
     }
 
-    /** Robust day calculation ensuring exact late penalty intervals */
     private static long daysLate(LocalDate due, LocalDate until) {
         if (due == null || until == null) return 0;
         long days = ChronoUnit.DAYS.between(due, until);
@@ -786,6 +724,77 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         }
     }
 
+    // ================================================================== password tickets
+
+    @Override
+    public String createPasswordTicket(int userId) {
+        // 1. Check if a PENDING ticket already exists for this user
+        String checkSql = "SELECT COUNT(*) FROM password_tickets WHERE user_id = ? AND status = 'PENDING'";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
+            checkStmt.setInt(1, userId);
+            try (ResultSet rs = checkStmt.executeQuery()) {
+                if (rs.next() && rs.getInt(1) > 0) {
+                    return "You already requested a ticket.";
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Database error while checking existing tickets.";
+        }
+
+        // 2. Insert new ticket
+        String sql = "INSERT INTO password_tickets (user_id, status) VALUES (?, 'PENDING')";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            return stmt.executeUpdate() > 0 ? null : "Could not submit password reset ticket.";
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Database error: " + e.getMessage();
+        }
+    }
+
+    @Override
+    public List<PasswordTicket> getPendingPasswordTickets() {
+        List<PasswordTicket> list = new ArrayList<>();
+        String sql = "SELECT t.ticket_id, t.user_id, u.username, u.full_name, t.request_date, t.status " +
+                "FROM password_tickets t JOIN users u ON t.user_id = u.user_id " +
+                "WHERE t.status = 'PENDING' ORDER BY t.request_date ASC";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                list.add(new PasswordTicket(
+                        rs.getInt("ticket_id"),
+                        rs.getInt("user_id"),
+                        rs.getString("username"),
+                        rs.getString("full_name"),
+                        rs.getTimestamp("request_date").toLocalDateTime(),
+                        rs.getString("status")
+                ));
+            }
+        } catch (SQLException e) {
+            DbHealth.readFailed();
+            System.err.println("[EquipmentDAOImpl Error] Failed to load pending password tickets: " + e.getMessage());
+        }
+        return list;
+    }
+
+    @Override
+    public boolean updatePasswordTicketStatus(int ticketId, String status, int adminUserId) {
+        String sql = "UPDATE password_tickets SET status = ? WHERE ticket_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            stmt.setInt(2, ticketId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to update password ticket status: " + e.getMessage());
+            return false;
+        }
+    }
+
     // ================================================================== approve / reject
 
     @Override
@@ -796,7 +805,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     @Override
     public String approveBorrow(int transactionId, int equipmentId, int adminUserId) {
         String updateTxSql = "UPDATE transactions SET " +
-                // date_borrowed is set before status on purpose: MySQL applies SET items left to right
                 "date_borrowed = CASE WHEN UPPER(status) = 'RESERVED' THEN CURDATE() ELSE date_borrowed END, " +
                 "status = 'BORROWED', processed_by = ?, total_fee_charged = ?, late_penalty_per_day = ?, approved_at = NOW() " +
                 "WHERE transaction_id = ?";
@@ -826,14 +834,9 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
             if (!txStatus.equals("PENDING") && !txStatus.equals("RESERVED")) {
                 conn.rollback();
-                return "This request was already handled (it may have been cancelled). Refresh the list.";
-            }
-            if (due != null && due.isBefore(LocalDate.now())) {
-                conn.rollback();
-                return "The requested return date has already passed. Reject this request and ask for a new one.";
+                return "This request was already handled. Refresh the list.";
             }
 
-            // The item's independent fees as they are right now
             double borrowFee = 0.0;
             double lateRate = LATE_PENALTY_PER_DAY;
             try (PreparedStatement ps = conn.prepareStatement(
@@ -853,30 +856,15 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 }
             }
 
-            // Multiply base daily borrow fee by precise rental days for this specific item
             long borrowDays = (due != null) ? Math.max(1, ChronoUnit.DAYS.between(borrowedDate, due)) : 1;
             double totalCalculatedFee = borrowFee * borrowDays;
-            // A reservation carries the price the borrower filled in - keep it instead of recalculating.
             if (txStatus.equals("RESERVED") && enteredFee > 0) totalCalculatedFee = enteredFee;
-
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? AND transaction_id <> ? " +
-                            "AND UPPER(status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
-                ps.setInt(1, equipmentId);
-                ps.setInt(2, transactionId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next() && rs.getInt(1) > 0) {
-                        conn.rollback();
-                        return "This item is still checked out by someone else. Approve it after it is returned.";
-                    }
-                }
-            }
 
             try (PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
                  PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
 
                 stmtTx.setInt(1, adminUserId);
-                stmtTx.setDouble(2, totalCalculatedFee); // Multiplied independent fee
+                stmtTx.setDouble(2, totalCalculatedFee);
                 stmtTx.setDouble(3, lateRate);
                 stmtTx.setInt(4, transactionId);
                 stmtTx.executeUpdate();
@@ -892,7 +880,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             if (conn != null) {
                 try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
             }
-            System.err.println("[EquipmentDAOImpl Error] Failed to approve borrow request: " + e.getMessage());
             return "Database error: " + e.getMessage();
         } finally {
             if (conn != null) {
@@ -905,7 +892,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     public boolean rejectBorrowRequest(int transactionId, int equipmentId, int adminUserId) {
         String updateTxSql = "UPDATE transactions SET status = 'REJECTED', processed_by = ? " +
                 "WHERE transaction_id = ? AND UPPER(status) IN ('PENDING', 'RESERVED')";
-        // A waiting request never changed the item, so only undo an old-style 'PENDING' item status.
         String updateEqSql = "UPDATE equipment SET status = 'AVAILABLE' WHERE equipment_id = ? AND UPPER(status) = 'PENDING'";
 
         Connection conn = null;
@@ -934,7 +920,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             if (conn != null) {
                 try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
             }
-            System.err.println("[EquipmentDAOImpl Error] Failed to reject borrow request: " + e.getMessage());
             return false;
         } finally {
             if (conn != null) {
@@ -959,7 +944,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             return stmt.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            System.err.println("[EquipmentDAOImpl Error] Failed to request return for tx " + transactionId + ": " + e.getMessage());
             return false;
         }
     }
@@ -973,8 +957,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     public boolean processReturnRequest(int transactionId, int adminUserId, boolean sendToMaintenance,
                                         String condition, String damageReport) {
         String getEqIdSql = "SELECT equipment_id FROM transactions WHERE transaction_id = ?";
-        // late_fee_charged is computed from return_requested_on (never from actual_return_date), because
-        // MySQL applies SET items left to right and actual_return_date is assigned right after it.
         String updateTxSql = "UPDATE transactions SET status = 'RETURNED', " +
                 "late_fee_charged = GREATEST(0, DATEDIFF(COALESCE(return_requested_on, CURDATE()), expected_return_date)) " +
                 "                   * COALESCE(late_penalty_per_day, ?), " +
@@ -998,7 +980,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 int equipmentId;
                 try (ResultSet rs = stmtGet.executeQuery()) {
                     if (!rs.next()) {
-                        System.err.println("[EquipmentDAOImpl Error] Transaction ID not found.");
                         conn.rollback();
                         return false;
                     }
@@ -1011,12 +992,10 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 stmtTx.setString(4, report);
                 stmtTx.setInt(5, transactionId);
                 if (stmtTx.executeUpdate() == 0) {
-                    // already processed
                     conn.rollback();
                     return false;
                 }
 
-                // Worn / damaged items go to the Maintenance Log instead of back into the catalog
                 stmtEq.setString(1, sendToMaintenance ? "MAINTENANCE" : "AVAILABLE");
                 stmtEq.setInt(2, equipmentId);
                 stmtEq.executeUpdate();
@@ -1026,11 +1005,9 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
             } catch (SQLException e) {
                 conn.rollback();
-                System.err.println("[EquipmentDAOImpl Error] Return transaction failed, rolled back: " + e.getMessage());
                 return false;
             }
         } catch (SQLException e) {
-            System.err.println("[EquipmentDAOImpl Error] Database connection failed: " + e.getMessage());
             return false;
         }
     }
@@ -1054,12 +1031,44 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                         d == null ? null : d.toLocalDate());
             }
         } catch (SQLException e) {
-            System.err.println("[EquipmentDAOImpl Error] Failed to load damage report: " + e.getMessage());
             return null;
         }
     }
 
     // ================================================================== receipt
+    @Override
+    public BorrowerDetails getBorrowerDetails(int transactionId) {
+        // Names, ID numbers and the ID photo are for the Super Admin only. The check is here as well as in the
+        // screen, so no other screen can show this data by mistake.
+        UserSession session = UserSession.getInstance();
+        if (session == null || !session.isSuperAdmin()) return null;
+
+        String sql = "SELECT t.transaction_id, t.borrower_name, t.borrower_type, t.borrower_id_number, " +
+                "t.program_or_dept, t.id_snapshot, u_req.username AS requester_username " +
+                "FROM transactions t " +
+                "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
+                "WHERE t.transaction_id = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, transactionId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return null;
+                return new BorrowerDetails(
+                        rs.getInt("transaction_id"),
+                        rs.getString("borrower_name"),
+                        rs.getString("borrower_type"),
+                        rs.getString("borrower_id_number"),
+                        rs.getString("program_or_dept"),
+                        rs.getString("requester_username"),
+                        rs.getBytes("id_snapshot"));
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to load borrower details for tx " + transactionId + ": " + e.getMessage());
+            return null;
+        }
+    }
 
     @Override
     public Receipt getReceiptForTransaction(int transactionId) {
@@ -1106,12 +1115,10 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 );
             }
         } catch (SQLException e) {
-            System.err.println("[EquipmentDAOImpl Error] Failed to load receipt for tx " + transactionId + ": " + e.getMessage());
             return null;
         }
     }
 
-    /** Same wording the Audit History table uses for the status column. */
     private static String receiptStatusLabel(String rawStatus, LocalDate due) {
         if ("RETURNED".equalsIgnoreCase(rawStatus)) return "Returned";
         if ("REJECTED".equalsIgnoreCase(rawStatus)) return "Rejected";

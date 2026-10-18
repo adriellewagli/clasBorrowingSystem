@@ -485,11 +485,18 @@ public class UserDashboardController extends BaseController {
     private void handleViewCatalog(ActionEvent event) {
         if (isNavigating || currentActiveButton == btnNavCatalog) return;
 
-        updateActiveSidebarButton(btnNavCatalog);
-        if (dynamicContentArea != null && catalogViewContainer != null) {
-            switchViewWithLock(catalogViewContainer);
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/admin/equipment_catalog.fxml"));
+            Node catalogView = loader.load();
+
+            updateActiveSidebarButton(btnNavCatalog);
+            if (dynamicContentArea != null) {
+                switchViewWithLock(catalogView);
+            }
+        } catch (IOException e) {
+            System.err.println("[UserDashboardController] Error loading equipment_catalog.fxml: " + e.getMessage());
+            e.printStackTrace();
         }
-        loadEquipmentData();
     }
 
     @FXML

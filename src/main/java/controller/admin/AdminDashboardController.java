@@ -32,7 +32,6 @@ import util.LiveRefresh;
 import util.RequestBadge;
 import util.TableCells;
 
-// Import the new dialog controller
 import controller.dialog.ConfirmDialogController;
 
 import java.io.IOException;
@@ -48,10 +47,13 @@ public class AdminDashboardController extends BaseController {
     // --- Sidebar & Content FXIDs ---
     @FXML private Button btnNavReturns;
     @FXML private Button btnNavRequests;
+    @FXML private Button btnNavCatalog;
+    @FXML private Button btnNavBorrowCart;
     @FXML private Button btnNavInventory;
     @FXML private Button btnNavMaintenance;
     @FXML private Button btnNavHistory;
     @FXML private Button btnNavAccounts;
+    @FXML private Button btnNavPasswordRequests; // <-- Add this field
     @FXML private Button btnNavFees;
     @FXML private Button btnNavUsage;
     @FXML private StackPane dynamicContentArea;
@@ -93,12 +95,6 @@ public class AdminDashboardController extends BaseController {
     private boolean returnsRefreshRunning = false;
     private BorrowedItem selectedTransaction;
 
-    // Every tab is loaded fresh when opened (nothing is cached), so it always shows current data.
-    private Node requestsView = null;
-    private Node inventoryView = null;
-    private Node maintenanceView = null;
-    private Node historyView = null;
-
     private boolean isNavigating = false;
     private Button currentActiveButton = null;
 
@@ -109,36 +105,54 @@ public class AdminDashboardController extends BaseController {
             lblUserName.setText(session.getFullName() != null ? session.getFullName() : "Admin");
             boolean superAdmin = session.isSuperAdmin();
             lblUserRole.setText(session.getRoleLabel());
-            // Only the Super Admin sees (and can open) the account management tab.
             if (btnNavAccounts != null) {
                 btnNavAccounts.setVisible(superAdmin);
                 btnNavAccounts.setManaged(superAdmin);
             }
-            // ...and the fees tab, where the Super Admin sets each item's borrowing fee and late fee
             if (btnNavFees != null) {
                 btnNavFees.setVisible(superAdmin);
                 btnNavFees.setManaged(superAdmin);
+            }
+            if (btnNavPasswordRequests != null) { // <-- Add this block
+                btnNavPasswordRequests.setVisible(superAdmin);
+                btnNavPasswordRequests.setManaged(superAdmin);
             }
         }
 
         currentActiveButton = btnNavReturns;
         comboCondition.setItems(FXCollections.observableArrayList("Good / Undamaged", "Minor Wear", "Damaged (Needs Repair)"));
 
-        // Show the damage-report box only when the item did not come back in good shape
         comboCondition.valueProperty().addListener((obs, o, n) -> updateDamageReportVisibility());
 
         setupTableColumns();
         setupSearch();
         loadTransactionData();
         setupRequestBadge();
+        setupCartBadge();
 
-        // the Process Return list and its counters follow the database while this tab is open
         returnsWatcher = LiveRefresh.watch(tblTransactions, LiveRefresh.DEFAULT_SECONDS, false, this::refreshReturnsInBackground);
     }
 
-    // ------------------------------------------------------------ pending-request badge
+    private void setupCartBadge() {
+        if (btnNavBorrowCart == null) return;
 
-    /** Puts a small red number beside "Manage Requests" that follows the number of pending requests. */
+        // Listen to changes on the shared catalog cart list
+        controller.user.EquipmentCatalogController.getQueuedCartList().addListener(
+                (javafx.collections.ListChangeListener<model.Equipment>) change -> updateCartButtonText()
+        );
+        updateCartButtonText(); // Set initial text
+    }
+
+    private void updateCartButtonText() {
+        if (btnNavBorrowCart == null) return;
+        int count = controller.user.EquipmentCatalogController.getQueuedCartList().size();
+        if (count > 0) {
+            btnNavBorrowCart.setText("Borrow Request (" + count + ")");
+        } else {
+            btnNavBorrowCart.setText("Borrow Request");
+        }
+    }
+
     private void setupRequestBadge() {
         if (btnNavRequests == null) return;
 
@@ -165,7 +179,7 @@ public class AdminDashboardController extends BaseController {
             @Override protected Integer call() {
                 DbHealth.reset();
                 int count = equipmentDAO.countPendingRequests();
-                return DbHealth.failed() ? null : count; // failed read: leave the badge as it is
+                return DbHealth.failed() ? null : count;
             }
         };
         task.setOnSucceeded(e -> { if (task.getValue() != null) RequestBadge.PENDING.set(task.getValue()); });
@@ -186,7 +200,6 @@ public class AdminDashboardController extends BaseController {
         colDueDate.setCellValueFactory(new PropertyValueFactory<>("dueDate"));
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
 
-        // --- Modern cell renderers (see util/TableCells.java) ---
         colTransId.setCellFactory(TableCells.<BorrowedItem, Integer>idCell());
         colBorrower.setCellFactory(TableCells.avatarNameCell());
         colEquipment.setCellFactory(TableCells.primaryCell());
@@ -196,11 +209,9 @@ public class AdminDashboardController extends BaseController {
         colAction.setCellFactory(TableCells.<BorrowedItem>actionButton("Process Return", this::openReturnModal));
 
         TableCells.modernize(tblTransactions);
-        // Round the table corners to match the card
         if (tableCard != null) TableCells.clipRounded(tableCard, 14);
     }
 
-    /** Wires the search box: filters by ID, borrower, equipment, or status. */
     private void setupSearch() {
         filteredList = new FilteredList<>(transactionList, t -> true);
         SortedList<BorrowedItem> sorted = new SortedList<>(filteredList);
@@ -214,7 +225,6 @@ public class AdminDashboardController extends BaseController {
         }
     }
 
-    /** Borrower name if the query provides it, otherwise falls back to category. */
     private static String displayBorrower(BorrowedItem t) {
         String n = t.getBorrowerName();
         return (n != null && !n.isBlank()) ? n : t.getCategory();
@@ -235,7 +245,6 @@ public class AdminDashboardController extends BaseController {
 
     @FXML
     private void loadTransactionData() {
-        // Show ALL active checkouts, not just 'Pending Return', so admins can force return anything
         transactionList.setAll(equipmentDAO.getAllActiveTransactions());
         updateMetrics();
     }
@@ -244,7 +253,6 @@ public class AdminDashboardController extends BaseController {
         showMetrics(equipmentDAO.getAllActiveTransactions());
     }
 
-    /** What the background refresh reads in one go. */
     private record ReturnsSnapshot(List<BorrowedItem> pending, List<BorrowedItem> stillOut) {}
 
     private void refreshReturnsInBackground() {
@@ -266,7 +274,6 @@ public class AdminDashboardController extends BaseController {
     }
 
     private void showMetrics(List<BorrowedItem> stillOut) {
-        // Metrics cover everything currently out, not just what is waiting to be returned.
         long overdue = stillOut.stream().filter(t -> "Overdue".equalsIgnoreCase(t.getStatus())).count();
 
         if (lblTotalCheckedOut != null) lblTotalCheckedOut.setText(String.valueOf(stillOut.size()));
@@ -327,10 +334,8 @@ public class AdminDashboardController extends BaseController {
             int currentAdminId = UserSession.getInstance().getUserId();
             String itemName = selectedTransaction.getEquipmentName();
 
-            // Anything other than "Good / Undamaged" (minor wear or damaged) goes to the Maintenance Log.
             boolean needsMaintenance = condition != null && !condition.startsWith("Good");
 
-            // A damaged item must come with a narrative report saying what exactly is damaged.
             String report = txtDamageReport.getText() == null ? "" : txtDamageReport.getText().trim();
             if (isDamagedSelected() && report.length() < 15) {
                 util.InputRules.setInvalid(txtDamageReport, true);
@@ -339,16 +344,13 @@ public class AdminDashboardController extends BaseController {
             }
             util.InputRules.setInvalid(txtDamageReport, false);
 
-            // --- CONFIRMATION DIALOG INTEGRATION ---
             String confirmMsg = String.format("Are you sure you want to finalize the return for '%s'?\n\nCondition marked as: %s", itemName, condition);
             boolean userSaidYes = ConfirmDialogController.show("Confirm Return", confirmMsg, modalOverlay.getScene().getWindow());
 
             if (!userSaidYes) {
-                return; // Stop here if the admin clicks Cancel
+                return;
             }
-            // ---------------------------------------
 
-            // Equipment status is updated in the same DB transaction as the return itself.
             boolean success = equipmentDAO.processReturnRequest(
                     selectedTransaction.getBorrowId(), currentAdminId, needsMaintenance, condition, report);
 
@@ -382,17 +384,32 @@ public class AdminDashboardController extends BaseController {
     @FXML
     private void handleViewRequests(ActionEvent event) {
         if (isNavigating || currentActiveButton == btnNavRequests) return;
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/admin/manage_requests.fxml", btnNavRequests);
+    }
+
+    @FXML
+    private void handleViewCatalog(ActionEvent event) {
+        if (isNavigating || currentActiveButton == btnNavCatalog) return;
+
+        // Loads the newly created standalone equipment catalog view into the admin center container
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/admin/equipment_catalog.fxml", btnNavCatalog);
+    }
+
+    @FXML
+    private void handleViewBorrowCart(ActionEvent event) {
+        if (isNavigating || currentActiveButton == btnNavBorrowCart) return;
 
         try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/admin/manage_requests.fxml"));
-            requestsView = loader.load();
+            // Load the borrow request view dynamically
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/user/borrow_request_cart.fxml"));
+            Node borrowCartView = loader.load();
 
-            updateActiveSidebarButton(btnNavRequests);
+            updateActiveSidebarButton(btnNavBorrowCart);
             if (dynamicContentArea != null) {
-                switchViewWithLock(requestsView);
+                switchViewWithLock(borrowCartView);
             }
         } catch (IOException e) {
-            System.err.println("[AdminDashboardController] Error loading manage_requests.fxml: " + e.getMessage());
+            System.err.println("[AdminDashboardController] Error loading borrow_request_cart.fxml: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -400,76 +417,25 @@ public class AdminDashboardController extends BaseController {
     @FXML
     private void handleViewInventory(ActionEvent event) {
         if (isNavigating || currentActiveButton == btnNavInventory) return;
-
-        try {
-            // loaded fresh each time: a cached copy kept showing items as they were when first opened
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/admin/admin_inventory.fxml"));
-            inventoryView = loader.load();
-
-            updateActiveSidebarButton(btnNavInventory);
-            if (dynamicContentArea != null) {
-                switchViewWithLock(inventoryView);
-            }
-        } catch (IOException e) {
-            System.err.println("[AdminDashboardController] Error loading admin_inventory.fxml: " + e.getMessage());
-            e.printStackTrace();
-        }
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/admin/admin_inventory.fxml", btnNavInventory);
     }
 
     @FXML
     private void handleViewMaintenance(ActionEvent event) {
         if (isNavigating || currentActiveButton == btnNavMaintenance) return;
-
-        try {
-            // loaded fresh each time so returned-damaged items always appear
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/admin/maintenance_log.fxml"));
-            maintenanceView = loader.load();
-
-            updateActiveSidebarButton(btnNavMaintenance);
-            if (dynamicContentArea != null) {
-                switchViewWithLock(maintenanceView);
-            }
-        } catch (IOException e) {
-            System.err.println("[AdminDashboardController] Error loading maintenance_log.fxml: " + e.getMessage());
-            e.printStackTrace();
-        }
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/admin/maintenance_log.fxml", btnNavMaintenance);
     }
 
     @FXML
     private void handleViewHistory(ActionEvent event) {
         if (isNavigating || currentActiveButton == btnNavHistory) return;
-
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/admin/admin_history.fxml"));
-            historyView = loader.load();
-
-            updateActiveSidebarButton(btnNavHistory);
-            if (dynamicContentArea != null) {
-                switchViewWithLock(historyView);
-            }
-        } catch (IOException e) {
-            System.err.println("[AdminDashboardController] Error loading admin_history.fxml: " + e.getMessage());
-            e.printStackTrace();
-        }
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/admin/admin_history.fxml", btnNavHistory);
     }
 
     @FXML
     private void handleViewUsage(ActionEvent event) {
         if (isNavigating || currentActiveButton == btnNavUsage) return;
-
-        try {
-            // loaded fresh each time so the ranking is current
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/admin/item_usage.fxml"));
-            Node usageView = loader.load();
-
-            updateActiveSidebarButton(btnNavUsage);
-            if (dynamicContentArea != null) {
-                switchViewWithLock(usageView);
-            }
-        } catch (IOException e) {
-            System.err.println("[AdminDashboardController] Error loading item_usage.fxml: " + e.getMessage());
-            e.printStackTrace();
-        }
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/admin/item_usage.fxml", btnNavUsage);
     }
 
     @FXML
@@ -477,19 +443,16 @@ public class AdminDashboardController extends BaseController {
         if (isNavigating || currentActiveButton == btnNavAccounts) return;
         UserSession session = UserSession.getInstance();
         if (session == null || !session.isSuperAdmin()) return;
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/superadmin/manage_accounts.fxml", btnNavAccounts);
+    }
 
-        try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/superadmin/manage_accounts.fxml"));
-            Node accountsView = loader.load();
+    @FXML
+    private void handleViewPasswordRequests(ActionEvent event) {
+        if (isNavigating || currentActiveButton == btnNavPasswordRequests) return;
+        UserSession session = UserSession.getInstance();
+        if (session == null || !session.isSuperAdmin()) return;
 
-            updateActiveSidebarButton(btnNavAccounts);
-            if (dynamicContentArea != null) {
-                switchViewWithLock(accountsView);
-            }
-        } catch (IOException e) {
-            System.err.println("[AdminDashboardController] Error loading manage_accounts.fxml: " + e.getMessage());
-            e.printStackTrace();
-        }
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/superadmin/password_requests.fxml", btnNavPasswordRequests);
     }
 
     @FXML
@@ -497,25 +460,41 @@ public class AdminDashboardController extends BaseController {
         if (isNavigating || currentActiveButton == btnNavFees) return;
         UserSession session = UserSession.getInstance();
         if (session == null || !session.isSuperAdmin()) return;
-
-        try {
-            // loaded fresh each time so the fees shown are current
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/superadmin/fee_settings.fxml"));
-            Node feesView = loader.load();
-
-            updateActiveSidebarButton(btnNavFees);
-            if (dynamicContentArea != null) {
-                switchViewWithLock(feesView);
-            }
-        } catch (IOException e) {
-            System.err.println("[AdminDashboardController] Error loading fee_settings.fxml: " + e.getMessage());
-            e.printStackTrace();
-        }
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/superadmin/fee_settings.fxml", btnNavFees);
     }
 
     @FXML
     private void handleChangeCredentials(ActionEvent event) {
         CredentialsDialog.show(btnNavHistory.getScene().getWindow(), false);
+    }
+
+    private void loadViewIntoCenter(String fxmlPath, Button navButton) {
+        try {
+            // Try loading via resource URL
+            java.net.URL fxmlUrl = getClass().getResource(fxmlPath);
+
+            // If null, try absolute path fallback based on standard package structure
+            if (fxmlUrl == null && !fxmlPath.startsWith("/")) {
+                fxmlUrl = getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/" + fxmlPath.replace("fxml/", ""));
+            }
+
+            if (fxmlUrl == null) {
+                System.err.println("[AdminDashboardController Error] FXML file could not be found: " + fxmlPath);
+                showErrorDialog("Navigation Error", "Could not find the view file: " + fxmlPath);
+                return;
+            }
+
+            FXMLLoader loader = new FXMLLoader(fxmlUrl);
+            Node view = loader.load();
+            updateActiveSidebarButton(navButton);
+            if (dynamicContentArea != null) {
+                switchViewWithLock(view);
+            }
+        } catch (IOException e) {
+            System.err.println("[AdminDashboardController] Error loading " + fxmlPath + ": " + e.getMessage());
+            e.printStackTrace();
+            showErrorDialog("Navigation Error", "Failed to load view: " + e.getMessage());
+        }
     }
 
     private void switchViewWithLock(Node targetView) {
@@ -533,7 +512,11 @@ public class AdminDashboardController extends BaseController {
 
     private void updateActiveSidebarButton(Button activeButton) {
         currentActiveButton = activeButton;
-        Button[] buttons = {btnNavReturns, btnNavRequests, btnNavInventory, btnNavMaintenance, btnNavHistory, btnNavUsage, btnNavAccounts, btnNavFees};
+        Button[] buttons = {
+                btnNavReturns, btnNavRequests, btnNavCatalog, btnNavBorrowCart,
+                btnNavInventory, btnNavMaintenance, btnNavHistory, btnNavUsage,
+                btnNavAccounts, btnNavFees, btnNavPasswordRequests // <-- Add btnNavPasswordRequests here
+        };
         for (Button btn : buttons) {
             if (btn != null) {
                 btn.getStyleClass().remove("sidebar-btn-active");

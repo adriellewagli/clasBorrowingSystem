@@ -24,6 +24,9 @@ public class SuccessDialogController {
 
     private Stage dialogStage;
 
+    // Cached FXML template URL to avoid repeated lookup overhead
+    private static URL cachedFxmlUrl = null;
+
     public void setDialogStage(Stage dialogStage) {
         this.dialogStage = dialogStage;
     }
@@ -39,42 +42,42 @@ public class SuccessDialogController {
             dialogStage = (Stage) lblTitle.getScene().getWindow();
         }
 
-        if (dialogStage != null) {
-            FadeTransition ft = new FadeTransition(Duration.millis(150), dialogStage.getScene().getRoot());
+        if (dialogStage != null && dialogStage.getScene() != null) {
+            FadeTransition ft = new FadeTransition(Duration.millis(120), dialogStage.getScene().getRoot());
             ft.setFromValue(1.0);
             ft.setToValue(0.0);
             ft.setOnFinished(e -> dialogStage.close());
             ft.play();
         } else if (lblTitle != null && lblTitle.getScene() != null) {
-            // Fallback immediate close if stage ref wasn't set
             ((Stage) lblTitle.getScene().getWindow()).close();
         }
     }
 
     public static void show(String title, String message, Window owner) {
         try {
-            // Try relative path first (same folder as controller)
-            URL fxmlUrl = SuccessDialogController.class.getResource("success_dialog.fxml");
-
-            // If not found, try absolute path based on standard package structure
-            if (fxmlUrl == null) {
-                fxmlUrl = SuccessDialogController.class.getResource("/com/borrowclas/clasborrowingsystem/fxml/dialog/success_dialog.fxml");
+            // Resolve URL once and cache it
+            if (cachedFxmlUrl == null) {
+                cachedFxmlUrl = SuccessDialogController.class.getResource("success_dialog.fxml");
+                if (cachedFxmlUrl == null) {
+                    cachedFxmlUrl = SuccessDialogController.class.getResource("/com/borrowclas/clasborrowingsystem/fxml/dialog/success_dialog.fxml");
+                }
             }
 
-            if (fxmlUrl == null) {
-                System.err.println("CRITICAL ERROR: 'success_dialog.fxml' could not be found anywhere by the class loader!");
+            if (cachedFxmlUrl == null) {
+                System.err.println("CRITICAL ERROR: 'success_dialog.fxml' could not be found!");
                 return;
             }
 
-            FXMLLoader loader = new FXMLLoader(fxmlUrl);
+            FXMLLoader loader = new FXMLLoader(cachedFxmlUrl);
             Parent page = loader.load();
 
             Stage dialogStage = new Stage();
-            dialogStage.initOwner(owner);
+            if (owner != null) {
+                dialogStage.initOwner(owner);
+            }
             dialogStage.initModality(Modality.WINDOW_MODAL);
             dialogStage.initStyle(StageStyle.TRANSPARENT);
 
-            // Roomy, well-proportioned dimensions
             Scene scene = new Scene(page, 460, 240);
             scene.setFill(Color.TRANSPARENT);
             dialogStage.setScene(scene);
@@ -83,15 +86,17 @@ public class SuccessDialogController {
             controller.setDialogStage(dialogStage);
             controller.setDialogDetails(title, message);
 
-            // Fade-in animation on show
-            scene.getRoot().setOpacity(0);
+            // Instant zero-opacity setup to prevent any white flash frame
+            page.setOpacity(0.0);
+
             dialogStage.setOnShown(e -> {
-                // Perfect absolute centering on the screen
+                // Center precisely on screen
                 Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
                 dialogStage.setX(screenBounds.getMinX() + (screenBounds.getWidth() - dialogStage.getWidth()) / 2.0);
                 dialogStage.setY(screenBounds.getMinY() + (screenBounds.getHeight() - dialogStage.getHeight()) / 2.0);
 
-                FadeTransition ft = new FadeTransition(Duration.millis(200), scene.getRoot());
+                // Ultra-smooth, lightning-fast 150ms fade-in
+                FadeTransition ft = new FadeTransition(Duration.millis(150), page);
                 ft.setFromValue(0.0);
                 ft.setToValue(1.0);
                 ft.play();

@@ -12,8 +12,11 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.VBox;
 import model.BorrowedItem;
+import model.BorrowerDetails;
 import model.Receipt;
+import model.UserSession;
 import javafx.event.ActionEvent;
+import util.BorrowerDetailsDialog;
 import util.ReceiptOverlay;
 import util.StatusGroups;
 import util.TableCells;
@@ -44,6 +47,8 @@ public class AdminHistoryController extends BaseController {
     @FXML private Button btnFilterReturned;
     @FXML private Button btnFilterCancelled;
     @FXML private TableColumn<BorrowedItem, Void> colReceipt;
+    // "Borrower info" column: who borrowed it + ID photo. Super Admin only.
+    @FXML private TableColumn<BorrowedItem, Void> colBorrowerInfo;
 
     // Digital receipt pop-up (declared in the FXML)
     @FXML private ReceiptOverlay receiptOverlay;
@@ -85,9 +90,21 @@ public class AdminHistoryController extends BaseController {
         colReceipt.setCellFactory(TableCells.<BorrowedItem>actionButton(
                 "View Receipt", this::openReceipt, this::hasReceipt));
 
+        // Who borrowed it and their ID photo: Super Admin only. For everyone else the column is removed.
+               if (isSuperAdmin()) {
+                        colBorrowerInfo.setCellFactory(TableCells.<BorrowedItem>actionButton("View details", this::openBorrowerDetails));
+                   } else {
+                        tblAuditHistory.getColumns().remove(colBorrowerInfo);
+                    }
+
         TableCells.modernize(tblAuditHistory);
         if (tableCard != null) TableCells.clipRounded(tableCard, 14);
     }
+
+    private static boolean isSuperAdmin() {
+                UserSession session = UserSession.getInstance();
+                return session != null && session.isSuperAdmin();
+            }
 
     @FXML
     public void loadAuditLogData() {
@@ -150,6 +167,20 @@ public class AdminHistoryController extends BaseController {
         String st = item.getStatus();
         return !"Pending".equalsIgnoreCase(st) && !"Rejected".equalsIgnoreCase(st)
                 && !"Cancelled".equalsIgnoreCase(st) && !"Reserved".equalsIgnoreCase(st);
+
+    }
+    // ------------------------------------------------------------ borrower details + ID photo (Super Admin)
+
+    private void openBorrowerDetails(BorrowedItem item) {
+        if (item == null || !isSuperAdmin()) return;   // checked again here, not only by hiding the column
+
+        BorrowerDetails details = equipmentDAO.getBorrowerDetails(item.getBorrowId());
+        if (details == null) {
+            showErrorDialog("Details Unavailable", "Could not load the borrower details for transaction #" + item.getBorrowId() + ".");
+            return;
+        }
+        javafx.stage.Window owner = tblAuditHistory.getScene() != null ? tblAuditHistory.getScene().getWindow() : null;
+        BorrowerDetailsDialog.show(owner, item, details);
     }
 
     private void openReceipt(BorrowedItem item) {

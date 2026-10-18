@@ -117,13 +117,18 @@ public class BorrowRequestCartController extends BaseController {
             TableCells.fitColumns(tblCart);
         }
 
-        showFees();
+        // Auto-bind to the shared catalog cart list on startup
+        setCartData(controller.user.EquipmentCatalogController.getQueuedCartList());
     }
 
     // ------------------------------------------------------------ cart data
 
     public void setCartData(ObservableList<Equipment> sharedList) {
-        this.sharedCartList = sharedList;
+        // Fall back to the catalog's shared static cart list if none was provided
+        this.sharedCartList = (sharedList != null && !sharedList.isEmpty())
+                ? sharedList
+                : controller.user.EquipmentCatalogController.getQueuedCartList();
+
         applyDefaultDates();
         if (tblCart != null) {
             tblCart.setItems(this.sharedCartList);
@@ -135,8 +140,10 @@ public class BorrowRequestCartController extends BaseController {
     public void setCartData(List<Equipment> items) {
         if (items instanceof ObservableList) {
             setCartData((ObservableList<Equipment>) items);
-        } else {
+        } else if (items != null) {
             setCartData(FXCollections.observableArrayList(items));
+        } else {
+            setCartData(controller.user.EquipmentCatalogController.getQueuedCartList());
         }
     }
 
@@ -429,6 +436,19 @@ public class BorrowRequestCartController extends BaseController {
             return;
         }
 
+        // --- CUSTOM CONFIRM DIALOG PROMPT ---
+        javafx.stage.Window owner = tblCart != null && tblCart.getScene() != null ? tblCart.getScene().getWindow() : null;
+        boolean confirmed = controller.dialog.ConfirmDialogController.show(
+                "Confirm Borrow Request",
+                "Are you sure you want to submit this borrowing request for " + sharedCartList.size() + " item(s)?",
+                owner
+        );
+
+        // Stop execution if user clicks Cancel
+        if (!confirmed) {
+            return;
+        }
+
         byte[] snapshotBytes = getSnapshotBytes();
         UserSession session = UserSession.getInstance();
         int activeUserId = (session != null && session.getUserId() > 0) ? session.getUserId() : 1;
@@ -485,8 +505,6 @@ public class BorrowRequestCartController extends BaseController {
                     successMsg,
                     tblCart.getScene().getWindow()
             );
-
-            // ... (PDF printing logic if selected) ...
 
             // Trigger the smooth success dialog
             controller.dialog.SuccessDialogController.show(
