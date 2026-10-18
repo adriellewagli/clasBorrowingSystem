@@ -88,7 +88,7 @@ public final class CombinedReceiptPdf {
             grandTotal += r.totalDue();
         }
 
-        moneyRow("Total Borrowing Fees", totalFee);
+        moneyRow("Total Borrowing Fees (" + receipts.size() + " items)", totalFee);
 
         y -= 4;
         line(LABEL_X, y + 8, RIGHT_X, y + 8, 0.80, 0.84, 0.88);

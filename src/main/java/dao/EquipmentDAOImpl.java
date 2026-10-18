@@ -656,9 +656,11 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         }
     }
 
+    /** Robust day calculation ensuring exact late penalty intervals */
     private static long daysLate(LocalDate due, LocalDate until) {
         if (due == null || until == null) return 0;
-        return Math.max(0, ChronoUnit.DAYS.between(due, until));
+        long days = ChronoUnit.DAYS.between(due, until);
+        return days > 0 ? days : 0;
     }
 
     private static LocalDate date(ResultSet rs, String column) throws SQLException {
@@ -787,15 +789,19 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
             String txStatus;
             LocalDate due;
+            LocalDate borrowedDate;
             try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT status, expected_return_date FROM transactions WHERE transaction_id = ? FOR UPDATE")) {
+                    "SELECT status, date_borrowed, expected_return_date FROM transactions WHERE transaction_id = ? FOR UPDATE")) {
                 ps.setInt(1, transactionId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) { conn.rollback(); return "That request no longer exists."; }
                     txStatus = upper(rs.getString("status"));
                     due = rs.getDate("expected_return_date") == null ? null : rs.getDate("expected_return_date").toLocalDate();
+                    java.sql.Date dbDate = rs.getDate("date_borrowed");
+                    borrowedDate = dbDate != null ? dbDate.toLocalDate() : LocalDate.now();
                 }
             }
+
             if (!txStatus.equals("PENDING") && !txStatus.equals("RESERVED")) {
                 conn.rollback();
                 return "This request was already handled (it may have been cancelled). Refresh the list.";
@@ -805,8 +811,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 return "The requested return date has already passed. Reject this request and ask for a new one.";
             }
 
-            // The item's fees as they are right now - they are copied onto the transaction below, so a later
-            // change in the Fees & Penalties tab does not alter an item that is already out.
+            // The item's independent fees as they are right now
             double borrowFee = 0.0;
             double lateRate = LATE_PENALTY_PER_DAY;
             try (PreparedStatement ps = conn.prepareStatement(
@@ -826,6 +831,10 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 }
             }
 
+            // Multiply base daily borrow fee by precise rental days for this specific item
+            long borrowDays = (due != null) ? Math.max(1, ChronoUnit.DAYS.between(borrowedDate, due)) : 1;
+            double totalCalculatedFee = borrowFee * borrowDays;
+
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? AND transaction_id <> ? " +
                             "AND UPPER(status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
@@ -843,7 +852,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                  PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
 
                 stmtTx.setInt(1, adminUserId);
-                stmtTx.setDouble(2, borrowFee);
+                stmtTx.setDouble(2, totalCalculatedFee); // Multiplied independent fee
                 stmtTx.setDouble(3, lateRate);
                 stmtTx.setInt(4, transactionId);
                 stmtTx.executeUpdate();

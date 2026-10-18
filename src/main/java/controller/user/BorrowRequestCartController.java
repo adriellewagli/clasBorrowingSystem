@@ -31,6 +31,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,7 @@ public class BorrowRequestCartController extends BaseController {
     private Webcam webcam;
     private volatile boolean isCameraRunning = false;
     private boolean idCaptured = false;
-    private boolean submitting = false; // blocks a second click while a submit is running
+    private boolean submitting = false;
     private BufferedImage capturedFrame = null;
 
     private final ObservableList<String> clasPrograms = FXCollections.observableArrayList(Programs.CLAS);
@@ -99,7 +100,6 @@ public class BorrowRequestCartController extends BaseController {
         if (txtCourse != null) txtCourse.setItems(clasPrograms);
         if (txtDepartment != null) txtDepartment.setItems(clasPrograms);
 
-        // Upper-cases the student number and turns the box red (with a message) when it is invalid.
         InputRules.bindStudentNumber(txtStudentId, lblStudentIdError, () -> radioStudent == null || radioStudent.isSelected());
 
         if (colCartName != null) colCartName.setCellValueFactory(new PropertyValueFactory<>("name"));
@@ -113,8 +113,6 @@ public class BorrowRequestCartController extends BaseController {
 
         if (tblCart != null) {
             tblCart.getColumns().forEach(col -> col.setReorderable(false));
-            // the date picker and the Remove button need their full width; if the panel is narrower
-            // than the columns, the queue scrolls sideways instead of cutting text ("Re...")
             if (colCartReturn != null) colCartReturn.setMinWidth(190);
             TableCells.fitColumns(tblCart);
         }
@@ -142,7 +140,6 @@ public class BorrowRequestCartController extends BaseController {
         }
     }
 
-    /** Every item starts with its own return date a few days out; the person can change each one. */
     private void applyDefaultDates() {
         if (sharedCartList == null) return;
         LocalDate fallback = LocalDate.now().plusDays(DEFAULT_DAYS);
@@ -159,10 +156,7 @@ public class BorrowRequestCartController extends BaseController {
         showFees();
     }
 
-    /**
-     * The borrowing fee of everything in the queue, and the late fee per day. Both are set per item
-     * by the Super Admin (Fees & Penalties tab); the amount is final once an admin approves the request.
-     */
+    /** Multiplies each item's individual borrow fee by its specific rental days. */
     private void showFees() {
         double total = 0;
         double minLate = Double.MAX_VALUE;
@@ -170,7 +164,10 @@ public class BorrowRequestCartController extends BaseController {
         int n = 0;
         if (sharedCartList != null) {
             for (Equipment e : sharedCartList) {
-                total += e.getBorrowFee();
+                LocalDate due = e.getReturnDate() != null ? e.getReturnDate() : LocalDate.now().plusDays(DEFAULT_DAYS);
+                long borrowDays = Math.max(1, ChronoUnit.DAYS.between(LocalDate.now(), due));
+
+                total += e.getBorrowFee() * borrowDays;
                 minLate = Math.min(minLate, e.getLateFeePerDay());
                 maxLate = Math.max(maxLate, e.getLateFeePerDay());
                 n++;
@@ -213,10 +210,16 @@ public class BorrowRequestCartController extends BaseController {
                         setDisable(empty || d.isBefore(LocalDate.now().plusDays(1)));
                     }
                 });
+
+                // Real-time update listener for the DatePicker
                 picker.valueProperty().addListener((obs, oldV, newV) -> {
                     Equipment row = currentRow();
                     if (row != null && newV != null && !newV.equals(row.getReturnDate())) {
                         row.setReturnDate(newV);
+                        if (tblCart != null) {
+                            tblCart.refresh();
+                        }
+                        showFees(); // Recalculates total fee instantly
                     }
                 });
             }
@@ -241,12 +244,16 @@ public class BorrowRequestCartController extends BaseController {
         });
     }
 
-    /** Quick buttons: give every item in the queue the same return date, then each can still be changed. */
     private void setAllReturnDates(int days) {
         if (sharedCartList == null) return;
         LocalDate d = LocalDate.now().plusDays(days);
-        for (Equipment e : sharedCartList) e.setReturnDate(d);
-        if (tblCart != null) tblCart.refresh();
+        for (Equipment e : sharedCartList) {
+            e.setReturnDate(d);
+        }
+        if (tblCart != null) {
+            tblCart.refresh();
+        }
+        showFees();
     }
 
     @FXML private void select1Day(ActionEvent e) { setAllReturnDates(1); }
@@ -369,7 +376,7 @@ public class BorrowRequestCartController extends BaseController {
         handleRetakeSnap();
     }
 
-    // ------------------------------------------------------------ submit (MODIFIED FOR AUTO-APPROVE)
+    // ------------------------------------------------------------ submit
 
     @FXML
     private void handleConfirmCommit(ActionEvent event) {
@@ -404,7 +411,6 @@ public class BorrowRequestCartController extends BaseController {
             return;
         }
 
-        // every item needs its own valid return date
         LocalDate earliest = LocalDate.now().plusDays(1);
         for (Equipment e : sharedCartList) {
             if (e.getReturnDate() == null || e.getReturnDate().isBefore(earliest)) {
@@ -427,7 +433,6 @@ public class BorrowRequestCartController extends BaseController {
         UserSession session = UserSession.getInstance();
         int activeUserId = (session != null && session.getUserId() > 0) ? session.getUserId() : 1;
 
-        // one entry per item, even if the queue somehow holds the same item twice
         Map<Integer, LocalDate> dueDates = new java.util.LinkedHashMap<>();
         for (Equipment e : sharedCartList) dueDates.putIfAbsent(e.getId(), e.getReturnDate());
         List<Integer> eqIds = new java.util.ArrayList<>(dueDates.keySet());
@@ -441,24 +446,18 @@ public class BorrowRequestCartController extends BaseController {
         List<Receipt> generatedReceipts = new java.util.ArrayList<>();
 
         try {
-            // 1. Submit the request (creates the PENDING entries)
             error = equipmentDAO.submitBatchBorrowRequest(
                     eqIds, dueDates, borrowerName, borrowerType, borrowerId, dept, activeUserId, snapshotBytes);
 
             if (error == null) {
-                // 2. Fetch the newly created pending requests for this user
                 List<BorrowedItem> pendingRequests = equipmentDAO.getPendingRequestsForUser(activeUserId);
 
                 for (BorrowedItem item : pendingRequests) {
-                    // Only process items that were part of this specific cart checkout
                     if (eqIds.contains(item.getEquipmentId())) {
-
-                        // 3. Auto-approve immediately, bypassing the admin dialog
                         String approveErr = equipmentDAO.approveBorrow(item.getTransactionId(), item.getEquipmentId(), activeUserId);
 
                         if (approveErr == null) {
                             approvedCount++;
-                            // 4. Store the receipt data in our list instead of printing immediately
                             Receipt r = equipmentDAO.getReceiptForTransaction(item.getTransactionId());
                             if (r != null) {
                                 generatedReceipts.add(r);
@@ -479,7 +478,6 @@ public class BorrowRequestCartController extends BaseController {
             clearFormInputs();
             lblErrorMsg.setText("");
 
-            // 5. Show the Custom Confirmation Pop-up for Printing
             String successMsg = "Success! " + approvedCount + " items were processed.\nWould you like to print your receipt?";
             PrintOption choice = ReceiptDialogController.show(
                     "Request Auto-Approved",
@@ -506,7 +504,6 @@ public class BorrowRequestCartController extends BaseController {
                     }
                 }
             }
-            // If PrintOption.NONE, do nothing.
 
         } else {
             lblErrorMsg.setText(error);

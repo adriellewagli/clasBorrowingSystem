@@ -86,7 +86,16 @@ public final class ReceiptPdf {
         row("Condition when released", r.initialCondition());
 
         section("CHARGES");
-        moneyRow("Borrowing fee", r.borrowingFee());
+        // Calculate rental days from borrow date to due date
+        long rentalDays = (r.dateBorrowed() != null && r.dueDate() != null)
+                ? Math.max(1, java.time.temporal.ChronoUnit.DAYS.between(r.dateBorrowed(), r.dueDate()))
+                : 1;
+
+        // Show itemized breakdown: e.g., "Borrowing fee (3 days x PHP 50.00)"
+        double baseRatePerDay = rentalDays > 0 ? r.borrowingFee() / rentalDays : r.borrowingFee();
+        moneyRow("Borrowing fee (" + rentalDays + (rentalDays == 1 ? " day" : " days")
+                + " x " + money(baseRatePerDay) + ")", r.borrowingFee());
+
         if (r.lateDays() > 0) {
             moneyRow("Late penalty (" + r.lateDays() + (r.lateDays() == 1 ? " day" : " days")
                     + " x " + money(r.latePenaltyPerDay()) + ")", r.lateFee());

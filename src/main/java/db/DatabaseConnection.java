@@ -30,14 +30,6 @@ public class DatabaseConnection {
         return conn;
     }
 
-    /*
-     * Runs once per launch and quietly brings the database up to what the app expects:
-     *  - status / role columns that are ENUMs become VARCHAR(20) so new values ('PENDING RETURN',
-     *    'MAINTENANCE', 'SUPERADMIN') are accepted. Existing values are kept.
-     *  - users.uses_default_credentials is added (1 = still on the default username/password).
-     *  - if there is no Super Admin account yet, a first one is created (superadmin / superadmin123).
-     * Every step logs a message instead of failing if it can't be done (e.g. no ALTER permission).
-     */
     private static synchronized void ensureSchema(Connection conn) {
         if (schemaChecked) return;
         schemaChecked = true;
@@ -48,18 +40,10 @@ public class DatabaseConnection {
         fixVarcharColumn(conn, "users", "status", "ACTIVE");
         addDefaultCredentialsFlag(conn);
         addTransactionColumns(conn);
+        addEquipmentFeeColumns(conn); // <-- Added here so fee columns are always ensured!
         seedFirstSuperAdmin(conn);
     }
 
-    /**
-     * Columns the newer borrowing features need. Each one is only added when it is missing, so this is
-     * safe to run on every launch (and on a database that already has data).
-     *  - approved_at          when an admin approved the request (Audit History sorts by it)
-     *  - return_requested_on  the day the user clicked "Return item" (late penalty stops counting there)
-     *  - late_fee_charged     the late penalty that was charged when the item was checked back in
-     *  - return_condition     condition the admin recorded on return (Good / Minor Wear / Damaged)
-     *  - damage_report        the narrative report written for a damaged return
-     */
     private static void addTransactionColumns(Connection conn) {
         addColumnIfMissing(conn, "transactions", "approved_at", "DATETIME NULL");
         addColumnIfMissing(conn, "transactions", "return_requested_on", "DATE NULL");
@@ -68,11 +52,6 @@ public class DatabaseConnection {
         addColumnIfMissing(conn, "transactions", "damage_report", "TEXT NULL");
     }
 
-    /**
-     * Re-tries the status-column repair on demand (used when a status update is rejected because the
-     * column is still an ENUM that doesn't know a new value such as 'CANCELLED').
-     * Returns null on success, or the SQL the person has to run by hand.
-     */
     public static synchronized String repairStatusColumns() {
         String manual = "ALTER TABLE transactions MODIFY status VARCHAR(20) NOT NULL DEFAULT 'PENDING'; "
                 + "ALTER TABLE equipment MODIFY status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE';";
@@ -154,6 +133,11 @@ public class DatabaseConnection {
             System.err.println("[DatabaseConnection] Could not add users.uses_default_credentials: " + e.getMessage()
                     + " - run: ALTER TABLE users ADD COLUMN uses_default_credentials TINYINT(1) NOT NULL DEFAULT 0;");
         }
+    }
+
+    private static void addEquipmentFeeColumns(Connection conn) {
+        addColumnIfMissing(conn, "equipment", "borrow_fee", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+        addColumnIfMissing(conn, "equipment", "late_fee_per_day", "DECIMAL(10,2) NOT NULL DEFAULT 50");
     }
 
     private static void seedFirstSuperAdmin(Connection conn) {
