@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="18" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.user.CurrentRequestsController">
+    <padding>
+        <Insets top="24" right="28" bottom="24" left="28"/>
+    </padding>
+
+    <HBox alignment="CENTER_LEFT" spacing="16">
+        <VBox spacing="3" HBox.hgrow="ALWAYS">
+            <Label text="My Requests" styleClass="page-title"/>
+            <Label text="Requests you made that are still waiting for an admin. Cancel one if you no longer need it." styleClass="page-subtitle"/>
+        </VBox>
+        <Button fx:id="btnRefresh" text="Refresh" styleClass="btn-secondary" onAction="#handleRefresh"/>
+    </HBox>
+
+    <HBox spacing="18">
+        <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
+            <Label text="Waiting for Approval" styleClass="metric-title"/>
+            <Label fx:id="lblPendingCount" text="0" styleClass="metric-value-blue"/>
+        </VBox>
+    </HBox>
+
+    <HBox spacing="12" alignment="CENTER_LEFT">
+        <TextField fx:id="txtSearch" promptText="Search by item, serial, or type..." styleClass="clean-search-field" HBox.hgrow="ALWAYS"/>
+        <ComboBox fx:id="cmbActionFilter" prefWidth="190" prefHeight="40"/>
+    </HBox>
+
+    <VBox fx:id="tableCard" styleClass="main-dashboard-card" VBox.vgrow="ALWAYS">
+        <TableView fx:id="tblRequests" VBox.vgrow="ALWAYS">
+            <columns>
+                <TableColumn fx:id="colReqId" text="REQ ID" prefWidth="80"/>
+                <TableColumn fx:id="colEquipment" text="EQUIPMENT" prefWidth="190"/>
+                <TableColumn fx:id="colSerial" text="SERIAL NO" prefWidth="130"/>
+                <TableColumn fx:id="colType" text="TYPE" prefWidth="110"/>
+                <TableColumn fx:id="colStart" text="START DATE" prefWidth="120"/>
+                <TableColumn fx:id="colDue" text="RETURN DATE" prefWidth="120"/>
+                <TableColumn fx:id="colStatus" text="STATUS" prefWidth="110"/>
+                <TableColumn fx:id="colAction" text="ACTION" prefWidth="150" sortable="false"/>
+            </columns>
+        </TableView>
+        <HBox styleClass="table-footer-bar" alignment="CENTER_LEFT">
+            <Label fx:id="lblRowCount" text="0 records" styleClass="footer-caption"/>
+        </HBox>
+    </VBox>
+</VBox>
