@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.chart.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="18" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.admin.ItemUsageController">
+    <padding>
+        <Insets top="24" right="28" bottom="24" left="28"/>
+    </padding>
+
+    <HBox alignment="CENTER_LEFT" spacing="16">
+        <VBox spacing="3" HBox.hgrow="ALWAYS">
+            <Label text="Most Used Items" styleClass="page-title"/>
+            <Label text="See which equipment is borrowed the most, to plan purchases and maintenance." styleClass="page-subtitle"/>
+        </VBox>
+        <Button text="Refresh" styleClass="btn-secondary" onAction="#handleRefresh"/>
+    </HBox>
+
+    <HBox spacing="18">
+        <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
+            <Label text="Most Borrowed Item" styleClass="metric-title"/>
+            <Label fx:id="lblTopItem" text="-" styleClass="section-title"/>
+        </VBox>
+        <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
+            <Label text="Total Borrows Recorded" styleClass="metric-title"/>
+            <Label fx:id="lblTotalBorrows" text="0" styleClass="metric-value-blue"/>
+        </VBox>
+    </HBox>
+
+    <VBox styleClass="main-dashboard-card">
+        <HBox styleClass="card-title-bar" alignment="CENTER_LEFT">
+            <Label text="Top 5 most borrowed" styleClass="section-title"/>
+        </HBox>
+        <BarChart fx:id="chartTop" prefHeight="230" minHeight="200" animated="false" legendVisible="false">
+            <xAxis><CategoryAxis fx:id="xAxis"/></xAxis>
+            <yAxis><NumberAxis fx:id="yAxis" side="LEFT"/></yAxis>
+        </BarChart>
+    </VBox>
+
+    <HBox spacing="12" alignment="CENTER_LEFT">
+        <TextField fx:id="txtSearch" promptText="Search by item, category, or serial..." styleClass="clean-search-field" HBox.hgrow="ALWAYS"/>
+        <ComboBox fx:id="cmbActionFilter" prefWidth="190" prefHeight="40"/>
+    </HBox>
+
+    <VBox fx:id="tableCard" styleClass="main-dashboard-card" VBox.vgrow="ALWAYS" minHeight="220">
+        <TableView fx:id="tblUsage" VBox.vgrow="ALWAYS">
+            <columns>
+                <TableColumn fx:id="colRank" text="RANK" prefWidth="70"/>
+                <TableColumn fx:id="colName" text="EQUIPMENT ITEM" prefWidth="210"/>
+                <TableColumn fx:id="colCategory" text="CATEGORY" prefWidth="150"/>
+                <TableColumn fx:id="colSerial" text="SERIAL NUMBER" prefWidth="140"/>
+                <TableColumn fx:id="colTimes" text="TIMES BORROWED" prefWidth="150"/>
+                <TableColumn fx:id="colLast" text="LAST BORROWED" prefWidth="140"/>
+                <TableColumn fx:id="colStatus" text="STATUS NOW" prefWidth="130"/>
+            </columns>
+        </TableView>
+        <HBox styleClass="table-footer-bar" alignment="CENTER_LEFT">
+            <Label fx:id="lblRowCount" text="0 records" styleClass="footer-caption"/>
+        </HBox>
+    </VBox>
+</VBox>

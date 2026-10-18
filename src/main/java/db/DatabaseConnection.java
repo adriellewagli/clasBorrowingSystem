@@ -1,0 +1,171 @@
+package db;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public class DatabaseConnection {
+    //laptop only DB NO LAN
+    private static final String URL = "jdbc:mysql://localhost:3306/clas_borrowing_db";
+    private static final String USER = "root";
+    private static final String PASSWORD = ""; // Empty string for default XAMPP setup
+
+    //LAN connection DB
+
+    /*
+    private static final String HOST = System.getProperty("clas.db.host", "localhost");
+    private static final String URL  = "jdbc:mysql://" + HOST + ":3306/clas_borrowing_db";
+    private static final String USER = System.getProperty("clas.db.user", "root");
+    private static final String PASSWORD = System.getProperty("clas.db.pass", "");
+    */
+
+    private static boolean schemaChecked = false;
+
+    public static Connection getConnection() throws SQLException {
+        Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+        ensureSchema(conn);
+        return conn;
+    }
+
+    private static synchronized void ensureSchema(Connection conn) {
+        if (schemaChecked) return;
+        schemaChecked = true;
+
+        fixVarcharColumn(conn, "transactions", "status", "PENDING");
+        fixVarcharColumn(conn, "equipment", "status", "AVAILABLE");
+        fixVarcharColumn(conn, "users", "role", "USER");
+        fixVarcharColumn(conn, "users", "status", "ACTIVE");
+        addDefaultCredentialsFlag(conn);
+        addTransactionColumns(conn);
+        addEquipmentFeeColumns(conn); // <-- Added here so fee columns are always ensured!
+        seedFirstSuperAdmin(conn);
+    }
+
+    private static void addTransactionColumns(Connection conn) {
+        addColumnIfMissing(conn, "transactions", "daily_fee", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+        addColumnIfMissing(conn, "transactions", "late_penalty_per_day", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+        addColumnIfMissing(conn, "transactions", "total_fee_charged", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+        addColumnIfMissing(conn, "transactions", "id_snapshot", "MEDIUMBLOB NULL");
+        addColumnIfMissing(conn, "transactions", "approved_at", "DATETIME NULL");
+        addColumnIfMissing(conn, "transactions", "return_requested_on", "DATE NULL");
+        addColumnIfMissing(conn, "transactions", "late_fee_charged", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+        addColumnIfMissing(conn, "transactions", "return_condition", "VARCHAR(40) NULL");
+        addColumnIfMissing(conn, "transactions", "damage_report", "TEXT NULL");
+    }
+
+    public static synchronized String repairStatusColumns() {
+        String manual = "ALTER TABLE transactions MODIFY status VARCHAR(20) NOT NULL DEFAULT 'PENDING'; "
+                + "ALTER TABLE equipment MODIFY status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE';";
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD)) {
+            fixVarcharColumn(conn, "transactions", "status", "PENDING");
+            fixVarcharColumn(conn, "equipment", "status", "AVAILABLE");
+            return null;
+        } catch (SQLException e) {
+            return manual;
+        }
+    }
+
+    private static void addColumnIfMissing(Connection conn, String table, String column, String definition) {
+        String check = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?";
+        try (PreparedStatement ps = conn.prepareStatement(check)) {
+            ps.setString(1, table);
+            ps.setString(2, column);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && rs.getInt(1) > 0) return;
+            }
+            try (Statement st = conn.createStatement()) {
+                st.executeUpdate("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
+                System.out.println("[DatabaseConnection] Added " + table + "." + column + ".");
+            }
+        } catch (SQLException e) {
+            System.err.println("[DatabaseConnection] Could not add " + table + "." + column + ": " + e.getMessage()
+                    + " - run: ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition + ";");
+        }
+    }
+
+    private static void fixVarcharColumn(Connection conn, String table, String column, String fallbackDefault) {
+        String info = "SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE, COLUMN_DEFAULT " +
+                "FROM INFORMATION_SCHEMA.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?";
+
+        try (PreparedStatement ps = conn.prepareStatement(info)) {
+            ps.setString(1, table);
+            ps.setString(2, column);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return;
+
+                String type = rs.getString("DATA_TYPE");
+                long length = rs.getLong("CHARACTER_MAXIMUM_LENGTH");
+                boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
+                String def = rs.getString("COLUMN_DEFAULT");
+
+                boolean isEnum = "enum".equalsIgnoreCase(type);
+                boolean tooShort = ("varchar".equalsIgnoreCase(type) || "char".equalsIgnoreCase(type)) && length < 20;
+                if (!isEnum && !tooShort) return; // already flexible enough
+
+                StringBuilder alter = new StringBuilder("ALTER TABLE " + table + " MODIFY " + column + " VARCHAR(20)");
+                alter.append(nullable ? " NULL" : " NOT NULL");
+                if (def != null) {
+                    alter.append(" DEFAULT '").append(def.replace("'", "''")).append("'");
+                } else if (!nullable) {
+                    alter.append(" DEFAULT '").append(fallbackDefault).append("'");
+                }
+
+                try (Statement st = conn.createStatement()) {
+                    st.executeUpdate(alter.toString());
+                    System.out.println("[DatabaseConnection] Updated " + table + "." + column + " to VARCHAR(20).");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("[DatabaseConnection] Could not update " + table + "." + column + " automatically: " + e.getMessage()
+                    + " - run: ALTER TABLE " + table + " MODIFY " + column + " VARCHAR(20) NOT NULL;");
+        }
+    }
+
+    private static void addDefaultCredentialsFlag(Connection conn) {
+        String check = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'uses_default_credentials'";
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(check)) {
+            if (rs.next() && rs.getInt(1) > 0) return;
+            st.executeUpdate("ALTER TABLE users ADD COLUMN uses_default_credentials TINYINT(1) NOT NULL DEFAULT 0");
+            System.out.println("[DatabaseConnection] Added users.uses_default_credentials.");
+        } catch (SQLException e) {
+            System.err.println("[DatabaseConnection] Could not add users.uses_default_credentials: " + e.getMessage()
+                    + " - run: ALTER TABLE users ADD COLUMN uses_default_credentials TINYINT(1) NOT NULL DEFAULT 0;");
+        }
+    }
+
+    private static void addEquipmentFeeColumns(Connection conn) {
+        addColumnIfMissing(conn, "equipment", "borrow_fee", "DECIMAL(10,2) NOT NULL DEFAULT 0");
+        addColumnIfMissing(conn, "equipment", "late_fee_per_day", "DECIMAL(10,2) NOT NULL DEFAULT 50");
+    }
+
+    private static void seedFirstSuperAdmin(Connection conn) {
+        String count = "SELECT COUNT(*) FROM users WHERE UPPER(REPLACE(role, '_', '')) = 'SUPERADMIN'";
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(count)) {
+            if (rs.next() && rs.getInt(1) > 0) return;
+        } catch (SQLException e) {
+            System.err.println("[DatabaseConnection] Could not check for a Super Admin: " + e.getMessage());
+            return;
+        }
+
+        String withFlag = "INSERT INTO users (full_name, username, password, role, status, uses_default_credentials) " +
+                "VALUES ('Super Administrator', 'superadmin', 'superadmin123', 'SUPERADMIN', 'ACTIVE', 1)";
+        String withoutFlag = "INSERT INTO users (full_name, username, password, role, status) " +
+                "VALUES ('Super Administrator', 'superadmin', 'superadmin123', 'SUPERADMIN', 'ACTIVE')";
+        try (Statement st = conn.createStatement()) {
+            try {
+                st.executeUpdate(withFlag);
+            } catch (SQLException first) {
+                st.executeUpdate(withoutFlag);
+            }
+            System.out.println("[DatabaseConnection] No Super Admin existed - created 'superadmin' / 'superadmin123'. Change it after logging in.");
+        } catch (SQLException e) {
+            System.err.println("[DatabaseConnection] Could not create the first Super Admin: " + e.getMessage());
+        }
+    }
+}

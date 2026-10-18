@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="18" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="controller.admin.ManageRequestsController">
+    <padding>
+        <Insets top="24" right="28" bottom="24" left="28"/>
+    </padding>
+
+    <!-- HEADER -->
+    <HBox alignment="CENTER_LEFT" spacing="16">
+        <VBox spacing="3" HBox.hgrow="ALWAYS">
+            <Label text="Pending Borrow Requests" styleClass="page-title"/>
+            <Label text="Review borrow requests and reservations. Approving asks for confirmation and the borrowing fee." styleClass="page-subtitle"/>
+        </VBox>
+        <Button fx:id="btnRefresh" text="Refresh List" styleClass="btn-secondary" onAction="#loadRequests"/>
+    </HBox>
+
+    <!-- METRIC -->
+    <HBox spacing="18">
+        <VBox styleClass="metric-card" HBox.hgrow="ALWAYS">
+            <Label text="Pending Approval Count" styleClass="metric-title"/>
+            <Label fx:id="lblPendingCount" text="0" styleClass="metric-value-blue"/>
+        </VBox>
+    </HBox>
+
+    <!-- SEARCH -->
+    <HBox spacing="12" alignment="CENTER_LEFT">
+        <TextField fx:id="txtSearch" promptText="Search borrower, equipment, or serial..." styleClass="clean-search-field" HBox.hgrow="ALWAYS"/>
+        <ComboBox fx:id="cmbActionFilter" prefWidth="190" prefHeight="40"/>
+    </HBox>
+
+    <!-- TABLE CARD -->
+    <VBox fx:id="tableCard" styleClass="main-dashboard-card" VBox.vgrow="ALWAYS">
+        <TableView fx:id="tblRequests" VBox.vgrow="ALWAYS">
+            <columns>
+                <TableColumn fx:id="colTransId" text="REQ ID" prefWidth="80"/>
+                <TableColumn fx:id="colBorrower" text="BORROWER" prefWidth="170"/>
+                <TableColumn fx:id="colEquipment" text="EQUIPMENT" prefWidth="180"/>
+                <TableColumn fx:id="colSerial" text="SERIAL NO" prefWidth="130"/>
+                <TableColumn fx:id="colType" text="TYPE" prefWidth="120"/>
+                <TableColumn fx:id="colBorrowDate" text="START DATE" prefWidth="120"/>
+                <TableColumn fx:id="colDueDate" text="RETURN DUE" prefWidth="120"/>
+                <TableColumn fx:id="colAction" text="DECISION" prefWidth="200"/>
+            </columns>
+            <columnResizePolicy>
+                <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+            </columnResizePolicy>
+        </TableView>
+        <HBox styleClass="table-footer-bar" alignment="CENTER_LEFT">
+            <Label fx:id="lblRowCount" text="0 records" styleClass="footer-caption"/>
+        </HBox>
+    </VBox>
+</VBox>

@@ -1,0 +1,1126 @@
+package dao;
+
+import db.DatabaseConnection;
+import db.DbHealth;
+import model.BorrowedItem;
+import model.DamageReport;
+import model.Equipment;
+import model.ItemFee;
+import model.ItemUsage;
+import model.Receipt;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+public class EquipmentDAOImpl implements EquipmentDAO {
+
+    /** Upper limit the Super Admin can set for a fee (keeps a typing slip from saving a silly amount). */
+    private static final double MAX_FEE = 100_000;
+
+    /** Which screen the rows are for - decides the wording of the status label. */
+    private enum Mode { AUDIT, USER_ACTIVE, USER_HISTORY, ADMIN_ACTIVE, RETURN_QUEUE, PENDING }
+
+    /** Columns every transaction list needs (the SQL aliases are what mapRow reads). */
+    private static final String TX_COLUMNS =
+            "t.transaction_id, e.equipment_id, e.item_name, e.category, e.serial_number, " +
+                    "t.borrower_name, t.borrower_type, t.borrower_id_number, " +
+                    "t.date_borrowed, t.expected_return_date, t.actual_return_date, t.return_requested_on, " +
+                    "t.status AS tx_status, t.total_fee_charged, t.late_penalty_per_day, t.late_fee_charged, t.approved_at, " +
+                    "e.borrow_fee AS item_borrow_fee, e.late_fee_per_day AS item_late_fee, " +
+                    "u_req.username AS requester_username, u_proc.username AS processor_username ";
+
+    private static final String TX_FROM =
+            "FROM transactions t " +
+                    "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                    "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
+                    "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id ";
+
+    // ================================================================== equipment
+
+    @Override
+    public boolean addEquipment(Equipment equipment) {
+        String sql = "INSERT INTO equipment (item_name, category, serial_number, status) VALUES (?, ?, ?, 'AVAILABLE')";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, equipment.getName());
+            stmt.setString(2, equipment.getCategory());
+            stmt.setString(3, equipment.getSerialNumber());
+
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to add equipment: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public List<Equipment> getAllEquipment() {
+        List<Equipment> list = new ArrayList<>();
+
+        // EXISTS (instead of a join) so an item that has several requests still shows up once.
+        String sql = "SELECT e.equipment_id AS id, e.item_name AS name, e.category, e.serial_number, " +
+                "e.borrow_fee, e.late_fee_per_day, " +
+                "CASE " +
+                "   WHEN EXISTS (SELECT 1 FROM transactions t WHERE t.equipment_id = e.equipment_id " +
+                "                AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')) THEN 'Checked Out' " +
+                "   WHEN EXISTS (SELECT 1 FROM transactions t WHERE t.equipment_id = e.equipment_id " +
+                "                AND UPPER(t.status) = 'PENDING') THEN 'Pending Approval' " +
+                "   WHEN UPPER(e.status) IN ('MAINTENANCE', 'REPAIR', 'IN MAINTENANCE') THEN 'In Maintenance' " +
+                "   ELSE 'Available' " +
+                "END AS display_status " +
+                "FROM equipment e ORDER BY e.equipment_id";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                Equipment eq = new Equipment(
+                        rs.getInt("id"),
+                        rs.getString("name"),
+                        rs.getString("category"),
+                        rs.getString("display_status"),
+                        rs.getString("serial_number"),
+                        1
+                );
+                eq.setBorrowFee(rs.getDouble("borrow_fee"));
+                eq.setLateFeePerDay(rs.getDouble("late_fee_per_day"));
+                list.add(eq);
+            }
+        } catch (SQLException e) {
+            DbHealth.readFailed();
+            System.err.println("[EquipmentDAOImpl Error] Failed to fetch equipment: " + e.getMessage());
+        }
+        return list;
+    }
+
+    @Override
+    public List<Equipment> getEquipmentByStatus(String status) {
+        List<Equipment> list = new ArrayList<>();
+
+        String dbStatus = toDbStatus(status);
+        // Older rows may have been saved as 'IN MAINTENANCE', so accept both spellings.
+        String where = "MAINTENANCE".equals(dbStatus) ? "status IN (?, 'IN MAINTENANCE')" : "status = ?";
+        String sql = "SELECT equipment_id AS id, item_name AS name, category, status, serial_number, 1 AS quantity " +
+                "FROM equipment WHERE " + where;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, dbStatus);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String rawStatus = rs.getString("status");
+                    String uiStatus = "Available";
+                    if ("BORROWED".equalsIgnoreCase(rawStatus)) uiStatus = "Checked Out";
+                    else if ("PENDING".equalsIgnoreCase(rawStatus)) uiStatus = "Pending Approval";
+                    else if ("MAINTENANCE".equalsIgnoreCase(rawStatus) || "IN MAINTENANCE".equalsIgnoreCase(rawStatus)) uiStatus = "In Maintenance";
+                    else if ("REPAIR".equalsIgnoreCase(rawStatus)) uiStatus = "In Repair";
+
+                    list.add(new Equipment(
+                            rs.getInt("id"),
+                            rs.getString("name"),
+                            rs.getString("category"),
+                            uiStatus,
+                            rs.getString("serial_number"),
+                            rs.getInt("quantity")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            DbHealth.readFailed();
+            System.err.println("[EquipmentDAOImpl Error] Failed to fetch equipment by status: " + e.getMessage());
+        }
+        return list;
+    }
+
+    /** UI label -> value stored in equipment.status */
+    private static String toDbStatus(String uiStatus) {
+        if ("Checked Out".equalsIgnoreCase(uiStatus)) return "BORROWED";
+        if ("Pending Approval".equalsIgnoreCase(uiStatus)) return "PENDING";
+        if ("In Maintenance".equalsIgnoreCase(uiStatus)) return "MAINTENANCE";
+        return uiStatus.toUpperCase();
+    }
+
+    @Override
+    public boolean updateStatus(int equipmentId, String newStatus) {
+        String sql = "UPDATE equipment SET status = ? WHERE equipment_id = ?";
+        String dbStatus = toDbStatus(newStatus);
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, dbStatus);
+            stmt.setInt(2, equipmentId);
+            return stmt.executeUpdate() > 0;
+
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to update equipment status: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // ================================================================== creating requests
+
+    @Override
+    public boolean createBorrowRequest(int equipmentId, String borrowerName, String borrowerType,
+                                       String borrowerIdNumber, String programOrDept, LocalDate returnTargetDate,
+                                       int requestedByUserId, double totalFeeCharged, byte[] idSnapshotBytes) {
+        return createBatchBorrowRequest(
+                Collections.singletonList(equipmentId),
+                borrowerName,
+                borrowerType,
+                borrowerIdNumber,
+                programOrDept,
+                returnTargetDate,
+                requestedByUserId,
+                totalFeeCharged,
+                idSnapshotBytes
+        );
+    }
+
+    @Override
+    public boolean createBatchBorrowRequest(List<Integer> equipmentIds, String borrowerName, String borrowerType,
+                                            String borrowerIdNumber, String programOrDept, LocalDate returnTargetDate,
+                                            int requestedByUserId, double totalFeeChargedPerItem, byte[] idSnapshotBytes) {
+        if (equipmentIds == null || equipmentIds.isEmpty() || returnTargetDate == null) return false;
+        Map<Integer, LocalDate> dates = new java.util.HashMap<>();
+        for (int id : equipmentIds) dates.put(id, returnTargetDate);
+        return createBatchBorrowRequest(equipmentIds, dates, borrowerName, borrowerType, borrowerIdNumber,
+                programOrDept, requestedByUserId, idSnapshotBytes);
+    }
+
+    @Override
+    public boolean createBatchBorrowRequest(List<Integer> equipmentIds, Map<Integer, LocalDate> returnDates,
+                                            String borrowerName, String borrowerType, String borrowerIdNumber,
+                                            String programOrDept, int requestedByUserId, byte[] idSnapshotBytes) {
+        return submitBatchBorrowRequest(equipmentIds, returnDates, borrowerName, borrowerType, borrowerIdNumber,
+                programOrDept, requestedByUserId, idSnapshotBytes) == null;
+    }
+
+    @Override
+    public String submitBatchBorrowRequest(List<Integer> equipmentIds, Map<Integer, LocalDate> returnDates,
+                                           String borrowerName, String borrowerType, String borrowerIdNumber,
+                                           String programOrDept, int requestedByUserId, byte[] idSnapshotBytes) {
+
+        if (equipmentIds == null || equipmentIds.isEmpty() || returnDates == null) return "Nothing to submit.";
+
+        // the same item can only be requested once per submit
+        java.util.List<Integer> ids = new ArrayList<>(new java.util.LinkedHashSet<>(equipmentIds));
+
+        // The fee is set by the admin on approval, so it starts at 0 here.
+        // processed_by starts as the requester so a NOT NULL column never rejects the row.
+        String insertSql = "INSERT INTO transactions " +
+                "(equipment_id, requested_by, borrower_name, date_borrowed, expected_return_date, status, processed_by, " +
+                "borrower_type, borrower_id_number, program_or_dept, initial_condition, daily_fee, " +
+                "late_penalty_per_day, total_fee_charged, id_snapshot) " +
+                "VALUES (?, ?, ?, CURDATE(), ?, 'PENDING', ?, ?, ?, ?, 'Good', 0.00, ?, 0.00, ?)";
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            int validUserId = (requestedByUserId > 0) ? requestedByUserId : 1;
+
+            // Lock the item rows, then make sure nobody (including a double-click of this same form)
+            // already has an open request on them.
+            for (int eqId : ids) {
+                String name;
+                String eqStatus;
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT item_name, status FROM equipment WHERE equipment_id = ? FOR UPDATE")) {
+                    ps.setInt(1, eqId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) { conn.rollback(); return "An item in your queue no longer exists."; }
+                        name = rs.getString("item_name");
+                        eqStatus = upper(rs.getString("status"));
+                    }
+                }
+                if (eqStatus.equals("MAINTENANCE") || eqStatus.equals("IN MAINTENANCE") || eqStatus.equals("REPAIR")) {
+                    conn.rollback();
+                    return "'" + name + "' is under maintenance and can't be requested.";
+                }
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? " +
+                                "AND UPPER(status) IN ('PENDING', 'BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
+                    ps.setInt(1, eqId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next() && rs.getInt(1) > 0) {
+                            conn.rollback();
+                            return "'" + name + "' already has a pending request or is checked out. "
+                                    + "Remove it from your queue (or use Reserve) and try again.";
+                        }
+                    }
+                }
+            }
+
+            try (PreparedStatement stmtInsert = conn.prepareStatement(insertSql)) {
+                for (int eqId : ids) {
+                    LocalDate due = returnDates.get(eqId);
+                    if (due == null) {
+                        conn.rollback();
+                        System.err.println("[EquipmentDAOImpl Error] No return date for equipment " + eqId);
+                        return "Choose a return date for every item.";
+                    }
+                    stmtInsert.setInt(1, eqId);
+                    stmtInsert.setInt(2, validUserId);
+                    stmtInsert.setString(3, borrowerName);
+                    stmtInsert.setDate(4, java.sql.Date.valueOf(due));
+                    stmtInsert.setInt(5, validUserId);
+                    stmtInsert.setString(6, borrowerType);
+                    stmtInsert.setString(7, borrowerIdNumber);
+                    stmtInsert.setString(8, programOrDept);
+                    stmtInsert.setDouble(9, LATE_PENALTY_PER_DAY);
+
+                    if (idSnapshotBytes != null && idSnapshotBytes.length > 0) {
+                        stmtInsert.setBytes(10, idSnapshotBytes);
+                    } else {
+                        stmtInsert.setNull(10, java.sql.Types.BLOB);
+                    }
+                    stmtInsert.addBatch();
+                }
+
+                stmtInsert.executeBatch();
+                conn.commit();
+                return null;
+            }
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
+            }
+            System.err.println("[EquipmentDAOImpl Error] Failed to create borrow requests: " + e.getMessage());
+            e.printStackTrace();
+            return "Database error: Could not process request.";
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        }
+    }
+
+    // ================================================================== reservations
+
+    /** Latest due date among requests/borrows that still hold the item (null if nothing does). */
+    private static LocalDate latestHold(Connection conn, int equipmentId) throws SQLException {
+        String sql = "SELECT MAX(expected_return_date) FROM transactions " +
+                "WHERE equipment_id = ? AND UPPER(status) IN ('PENDING', 'BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, equipmentId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && rs.getDate(1) != null) return rs.getDate(1).toLocalDate();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public LocalDate getEarliestReservationDate(int equipmentId) {
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            LocalDate hold = latestHold(conn, equipmentId);
+            if (hold != null && !hold.plusDays(1).isBefore(tomorrow)) return hold.plusDays(1);
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to read earliest reservation date: " + e.getMessage());
+        }
+        return tomorrow;
+    }
+
+    @Override
+    public String createReservation(int equipmentId, String borrowerName, String borrowerType,
+                                    String borrowerIdNumber, String programOrDept, LocalDate pickupDate,
+                                    LocalDate returnDate, int requestedByUserId, double totalFee, byte[] idSnapshotBytes) {
+        if (idSnapshotBytes == null || idSnapshotBytes.length == 0) return "ID Verification required: please take an ID snapshot.";
+        if (Double.isNaN(totalFee) || totalFee < 0) return "Enter the item's price (0 or more).";
+        if (totalFee > MAX_FEE) return "That price is too high. The most you can enter is " + String.format("%,.0f", MAX_FEE) + ".";
+        if (pickupDate == null || returnDate == null) return "Choose both a pick-up date and a return date.";
+        if (pickupDate.isBefore(LocalDate.now().plusDays(1))) return "The pick-up date must be tomorrow or later.";
+        if (returnDate.isBefore(pickupDate)) return "The return date can't be before the pick-up date.";
+
+        try (Connection conn = DatabaseConnection.getConnection()) {
+
+            double itemFee = 0.0;
+            double lateRate = LATE_PENALTY_PER_DAY;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT status, borrow_fee, late_fee_per_day FROM equipment WHERE equipment_id = ?")) {
+                ps.setInt(1, equipmentId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) return "That item no longer exists.";
+                    itemFee = rs.getDouble("borrow_fee");
+                    if (rs.wasNull() || itemFee < 0) itemFee = 0.0;
+                    lateRate = rs.getDouble("late_fee_per_day");
+                    if (rs.wasNull() || lateRate < 0) lateRate = LATE_PENALTY_PER_DAY;
+                    String st = rs.getString(1) == null ? "" : rs.getString(1).toUpperCase(Locale.ROOT);
+                    if (st.equals("MAINTENANCE") || st.equals("IN MAINTENANCE") || st.equals("REPAIR")) {
+                        return "This item is under maintenance and can't be reserved right now.";
+                    }
+                }
+            }
+
+            LocalDate hold = latestHold(conn, equipmentId);
+            if (hold != null && !pickupDate.isAfter(hold)) {
+                return "This item is already out or requested until " + hold
+                        + ". Choose a pick-up date after that.";
+            }
+
+            String overlap = "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? AND UPPER(status) = 'RESERVED' " +
+                    "AND NOT (expected_return_date < ? OR date_borrowed > ?)";
+            try (PreparedStatement ps = conn.prepareStatement(overlap)) {
+                ps.setInt(1, equipmentId);
+                ps.setDate(2, java.sql.Date.valueOf(pickupDate));
+                ps.setDate(3, java.sql.Date.valueOf(returnDate));
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next() && rs.getInt(1) > 0) return "This item is already reserved for overlapping dates.";
+                }
+            }
+
+            int uid = requestedByUserId > 0 ? requestedByUserId : 1;
+            String insert = "INSERT INTO transactions " +
+                    "(equipment_id, requested_by, borrower_name, date_borrowed, expected_return_date, status, processed_by, " +
+                    "borrower_type, borrower_id_number, program_or_dept, initial_condition, daily_fee, " +
+                    "late_penalty_per_day, total_fee_charged, id_snapshot) " +
+                    "VALUES (?, ?, ?, ?, ?, 'RESERVED', ?, ?, ?, ?, 'Good', 0.00, ?, ?, ?)";
+            // totalFee is the price the borrower typed in the reserve form
+            try (PreparedStatement ps = conn.prepareStatement(insert)) {
+                ps.setInt(1, equipmentId);
+                ps.setInt(2, uid);
+                ps.setString(3, borrowerName);
+                ps.setDate(4, java.sql.Date.valueOf(pickupDate));
+                ps.setDate(5, java.sql.Date.valueOf(returnDate));
+                ps.setInt(6, uid);
+                ps.setString(7, borrowerType);
+                ps.setString(8, borrowerIdNumber);
+                ps.setString(9, programOrDept);
+                ps.setDouble(10, lateRate);
+                ps.setDouble(11, totalFee);
+                ps.setBytes(12, idSnapshotBytes);
+                ps.executeUpdate();
+            }
+            return null;
+
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to create reservation: " + e.getMessage());
+            return "Could not save the reservation: " + e.getMessage();
+        }
+    }
+
+    // ================================================================== staff: own requests
+
+    @Override
+    public List<BorrowedItem> getPendingRequestsForUser(int userId) {
+        String sql = "SELECT " + TX_COLUMNS + TX_FROM +
+                "WHERE t.requested_by = ? AND UPPER(t.status) IN ('PENDING', 'RESERVED') " +
+                "ORDER BY t.transaction_id DESC";
+        return      queryItems(sql, Mode.PENDING, userId);
+    }
+
+    @Override
+    public boolean cancelRequest(int transactionId, int userId) {
+        String sql = "UPDATE transactions SET status = 'CANCELLED' " +
+                "WHERE transaction_id = ? AND requested_by = ? AND UPPER(status) IN ('PENDING', 'RESERVED')";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, transactionId);
+            stmt.setInt(2, userId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to cancel request " + transactionId + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public String cancelRequestResult(int transactionId, int userId) {
+        String sql = "UPDATE transactions SET status = 'CANCELLED' "
+                + "WHERE transaction_id = ? AND requested_by = ? AND UPPER(status) IN ('PENDING', 'RESERVED')";
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try (Connection conn = DatabaseConnection.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, transactionId);
+                stmt.setInt(2, userId);
+                if (stmt.executeUpdate() > 0) return null;
+                return "This request was already approved or rejected by an admin (or belongs to another account), "
+                        + "so it can't be cancelled.";
+            } catch (SQLException e) {
+                System.err.println("[EquipmentDAOImpl Error] Failed to cancel request " + transactionId + ": " + e.getMessage());
+                // the usual cause: the status column is still an ENUM without 'CANCELLED' - repair it and retry once
+                if (attempt == 0) {
+                    String manual = DatabaseConnection.repairStatusColumns();
+                    if (manual != null) {
+                        return "The database refused the change (" + e.getMessage() + "). Ask whoever manages MySQL to run: " + manual;
+                    }
+                } else {
+                    return "The database refused the change: " + e.getMessage();
+                }
+            }
+        }
+        return "Could not cancel the request.";
+    }
+
+    @Override
+    public int countPendingRequests() {
+        String sql = "SELECT COUNT(*) FROM transactions WHERE UPPER(status) IN ('PENDING', 'RESERVED')";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            DbHealth.readFailed();
+            System.err.println("[EquipmentDAOImpl Error] Failed to count pending requests: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    // ================================================================== lists
+
+    @Override
+    public List<BorrowedItem> getActiveBorrowsForUser(int userId) {
+        // Filters strictly on t.requested_by so items stay visible regardless of who approved them
+        String sql = "SELECT " + TX_COLUMNS + TX_FROM +
+                "WHERE t.requested_by = ? " +
+                "AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN') " +
+                "ORDER BY t.transaction_id DESC";
+        return queryItems(sql, Mode.USER_ACTIVE, userId);
+    }
+
+    @Override
+    public List<BorrowedItem> getBorrowHistoryForUser(int userId) {
+        String sql = "SELECT " + TX_COLUMNS + TX_FROM +
+                "WHERE t.requested_by = ? " +
+                "ORDER BY t.transaction_id DESC";
+        return queryItems(sql, Mode.USER_HISTORY, userId);
+    }
+
+    @Override
+    public List<BorrowedItem> getAllActiveTransactions() {
+        String sql = "SELECT " + TX_COLUMNS + TX_FROM +
+                "WHERE UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')";
+        return queryItems(sql, Mode.ADMIN_ACTIVE, null);
+    }
+
+    @Override
+    public List<BorrowedItem> getPendingReturnTransactions() {
+        String sql = "SELECT " + TX_COLUMNS + TX_FROM +
+                "WHERE UPPER(t.status) = 'PENDING RETURN' " +
+                "ORDER BY t.transaction_id ASC";
+        return queryItems(sql, Mode.RETURN_QUEUE, null);
+    }
+
+    @Override
+    public List<BorrowedItem> getPendingTransactions() {
+        String sql = "SELECT " + TX_COLUMNS + TX_FROM +
+                "WHERE UPPER(t.status) IN ('PENDING', 'RESERVED') " +
+                "ORDER BY t.transaction_id ASC";
+        return queryItems(sql, Mode.PENDING, null);
+    }
+
+    @Override
+    public List<BorrowedItem> getAllTransactionHistory() {
+        // Most recently approved first; requests that were never approved fall back to their request date.
+        String sql = "SELECT " + TX_COLUMNS + TX_FROM +
+                "ORDER BY COALESCE(t.approved_at, t.date_borrowed) DESC, t.transaction_id DESC";
+        return queryItems(sql, Mode.AUDIT, null);
+    }
+
+    private List<BorrowedItem> queryItems(String sql, Mode mode, Integer userId) {
+        List<BorrowedItem> list = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            if (userId != null) stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) list.add(mapRow(rs, mode));
+            }
+        } catch (SQLException e) {
+            DbHealth.readFailed();
+            System.err.println("[EquipmentDAOImpl Error] Failed to load transactions (" + mode + "): " + e.getMessage());
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    // ------------------------------------------------------------------ row mapping
+
+    private static BorrowedItem mapRow(ResultSet rs, Mode mode) throws SQLException {
+        String raw = upper(rs.getString("tx_status"));
+        LocalDate due = date(rs, "expected_return_date");
+        if (due == null) due = LocalDate.now();
+        LocalDate borrowed = date(rs, "date_borrowed");
+        if (borrowed == null) borrowed = LocalDate.now();
+
+        BorrowedItem item = new BorrowedItem(
+                rs.getInt("transaction_id"),
+                rs.getInt("equipment_id"),
+                rs.getString("item_name"),
+                rs.getString("category"),
+                rs.getString("serial_number"),
+                borrowed,
+                due,
+                uiStatus(raw, due, mode));
+
+        item.setBorrowerName(rs.getString("borrower_name"));
+        item.setBorrowerType(rs.getString("borrower_type"));
+        item.setBorrowerIdNumber(rs.getString("borrower_id_number"));
+
+        String requester = rs.getString("requester_username");
+        item.setRequestedBy(requester);
+
+        boolean waiting = raw.equals("PENDING") || raw.equals("RESERVED");
+        // While a request is waiting, processed_by only holds a placeholder (the requester), so hide it.
+        item.setProcessedBy(waiting ? null : raw.equals("CANCELLED") ? requester : rs.getString("processor_username"));
+        item.setRequestType(raw.equals("RESERVED") ? "Reservation" : "Borrow");
+
+        fillBilling(item, rs, raw, due);
+        return item;
+    }
+
+    private static String uiStatus(String raw, LocalDate due, Mode mode) {
+        boolean late = due != null && due.isBefore(LocalDate.now());
+        switch (raw) {
+            case "BORROWED":
+            case "ACTIVE":
+            case "APPROVED":
+                return late ? "Overdue" : (mode == Mode.USER_HISTORY ? "Approved" : "Active");
+            case "PENDING RETURN":
+                if (mode == Mode.ADMIN_ACTIVE) return late ? "Overdue" : "Active";
+                if (mode == Mode.RETURN_QUEUE) return late ? "Overdue" : "Pending Return";
+                return "Pending Return";
+            case "RETURNED":  return "Returned";
+            case "REJECTED":  return "Rejected";
+            case "CANCELLED": return "Cancelled";
+            case "RESERVED":  return "Reserved";
+            default:          return "Pending";
+        }
+    }
+
+    private static void fillBilling(BorrowedItem item, ResultSet rs, String raw, LocalDate due) throws SQLException {
+        boolean waiting = raw.equals("PENDING") || raw.equals("RESERVED");
+
+        // a rate of 0 is allowed (the Super Admin can make an item free of late fees); only a missing one falls back
+        double rate = rs.getDouble("late_penalty_per_day");
+        if (rs.wasNull() || rate < 0) rate = LATE_PENALTY_PER_DAY;
+        double fee = rs.getDouble("total_fee_charged");
+        if (waiting) {
+            rate = moneyOrDefault(rs, "item_late_fee", rate);
+            double perDay = moneyOrDefault(rs, "item_borrow_fee", 0.0);
+            LocalDate from = date(rs, "date_borrowed");
+            long rentalDays = (due != null && from != null) ? Math.max(1, ChronoUnit.DAYS.between(from, due)) : 1;
+            if (raw.equals("RESERVED") && fee > 0) {
+                // keep the price typed in the reserve form
+            } else {
+                fee = perDay > 0 ? perDay * rentalDays : fee;
+            }
+        }
+
+        LocalDate actual = date(rs, "actual_return_date");
+        LocalDate requestedOn = date(rs, "return_requested_on");
+
+        long days = 0;
+        switch (raw) {
+            case "BORROWED":
+            case "ACTIVE":
+            case "APPROVED":
+                days = daysLate(due, LocalDate.now());
+                break;
+            case "PENDING RETURN":
+                days = daysLate(due, requestedOn != null ? requestedOn : LocalDate.now());
+                break;
+            case "RETURNED":
+                days = daysLate(due, actual != null ? actual : LocalDate.now());
+                break;
+            default:
+                break;
+        }
+
+        double penalty = days * rate;
+        if (raw.equals("RETURNED")) {
+            double stored = rs.getDouble("late_fee_charged");
+            if (stored > 0) penalty = stored;
+        }
+
+        item.setLateDays(days);
+        item.setLatePenalty(penalty);
+        item.setFee(fee);
+        item.setFeePending(false);
+        item.setLatePenaltyPerDay(rate);
+
+        Timestamp ts = rs.getTimestamp("approved_at");
+        if (ts != null) item.setApprovedAt(ts.toLocalDateTime());
+    }
+
+    /** Reads a money column that may be NULL or missing; returns {@code fallback} in that case. */
+    private static double moneyOrDefault(ResultSet rs, String column, double fallback) {
+        try {
+            double v = rs.getDouble(column);
+            return (rs.wasNull() || v < 0) ? fallback : v;
+        } catch (SQLException e) {
+            return fallback;
+        }
+    }
+
+    /** Robust day calculation ensuring exact late penalty intervals */
+    private static long daysLate(LocalDate due, LocalDate until) {
+        if (due == null || until == null) return 0;
+        long days = ChronoUnit.DAYS.between(due, until);
+        return days > 0 ? days : 0;
+    }
+
+    private static LocalDate date(ResultSet rs, String column) throws SQLException {
+        java.sql.Date d = rs.getDate(column);
+        return d == null ? null : d.toLocalDate();
+    }
+
+    private static String upper(String s) {
+        return s == null ? "" : s.trim().toUpperCase(Locale.ROOT);
+    }
+
+    // ================================================================== most used
+
+    @Override
+    public List<ItemUsage> getMostUsedEquipment() {
+        List<ItemUsage> list = new ArrayList<>();
+        String sql = "SELECT e.equipment_id, e.item_name, e.category, e.serial_number, e.status, " +
+                "COUNT(t.transaction_id) AS times_borrowed, MAX(t.date_borrowed) AS last_borrowed " +
+                "FROM equipment e " +
+                "LEFT JOIN transactions t ON t.equipment_id = e.equipment_id " +
+                "   AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN', 'RETURNED') " +
+                "GROUP BY e.equipment_id, e.item_name, e.category, e.serial_number, e.status " +
+                "ORDER BY times_borrowed DESC, last_borrowed DESC, e.item_name ASC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            int rank = 1;
+            while (rs.next()) {
+                String raw = upper(rs.getString("status"));
+                String shown = raw.equals("BORROWED") ? "Checked Out"
+                        : (raw.equals("MAINTENANCE") || raw.equals("IN MAINTENANCE") || raw.equals("REPAIR")) ? "In Maintenance"
+                        : raw.equals("PENDING") ? "Pending Approval" : "Available";
+                java.sql.Date last = rs.getDate("last_borrowed");
+                ItemUsage u = new ItemUsage(
+                        rs.getInt("equipment_id"),
+                        rs.getString("item_name"),
+                        rs.getString("category"),
+                        rs.getString("serial_number"),
+                        rs.getInt("times_borrowed"),
+                        last == null ? null : last.toLocalDate(),
+                        shown);
+                u.setRank(rank++);
+                list.add(u);
+            }
+        } catch (SQLException e) {
+            DbHealth.readFailed();
+            System.err.println("[EquipmentDAOImpl Error] Failed to load most used items: " + e.getMessage());
+        }
+        return list;
+    }
+
+    // ================================================================== super admin: item fees
+
+    @Override
+    public List<ItemFee> getItemFees() {
+        List<ItemFee> list = new ArrayList<>();
+        String sql = "SELECT equipment_id, item_name, category, serial_number, borrow_fee, late_fee_per_day " +
+                "FROM equipment ORDER BY item_name ASC, serial_number ASC, equipment_id ASC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                list.add(new ItemFee(
+                        rs.getInt("equipment_id"),
+                        rs.getString("item_name"),
+                        rs.getString("category"),
+                        rs.getString("serial_number"),
+                        rs.getDouble("borrow_fee"),
+                        rs.getDouble("late_fee_per_day")));
+            }
+        } catch (SQLException e) {
+            DbHealth.readFailed();
+            System.err.println("[EquipmentDAOImpl Error] Failed to load item fees: " + e.getMessage());
+        }
+        return list;
+    }
+
+    @Override
+    public String updateItemFees(int equipmentId, double borrowFee, double lateFeePerDay) {
+        if (Double.isNaN(borrowFee) || Double.isNaN(lateFeePerDay) || borrowFee < 0 || lateFeePerDay < 0) {
+            return "Fees can't be negative.";
+        }
+        if (borrowFee > MAX_FEE || lateFeePerDay > MAX_FEE) {
+            return "A fee can't be more than " + (long) MAX_FEE + ".";
+        }
+
+        String sql = "UPDATE equipment SET borrow_fee = ?, late_fee_per_day = ? WHERE equipment_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setDouble(1, borrowFee);
+            stmt.setDouble(2, lateFeePerDay);
+            stmt.setInt(3, equipmentId);
+            return stmt.executeUpdate() > 0 ? null : "That item no longer exists. Refresh the list.";
+
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to update fees for item " + equipmentId + ": " + e.getMessage());
+            return "Database error: could not save the fees.";
+        }
+    }
+
+    // ================================================================== approve / reject
+
+    @Override
+    public boolean approveBorrowRequest(int transactionId, int equipmentId, int adminUserId) {
+        return approveBorrow(transactionId, equipmentId, adminUserId) == null;
+    }
+
+    @Override
+    public String approveBorrow(int transactionId, int equipmentId, int adminUserId) {
+        String updateTxSql = "UPDATE transactions SET " +
+                // date_borrowed is set before status on purpose: MySQL applies SET items left to right
+                "date_borrowed = CASE WHEN UPPER(status) = 'RESERVED' THEN CURDATE() ELSE date_borrowed END, " +
+                "status = 'BORROWED', processed_by = ?, total_fee_charged = ?, late_penalty_per_day = ?, approved_at = NOW() " +
+                "WHERE transaction_id = ?";
+        String updateEqSql = "UPDATE equipment SET status = 'BORROWED' WHERE equipment_id = ?";
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            String txStatus;
+            LocalDate due;
+            LocalDate borrowedDate;
+            double enteredFee = 0.0;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT status, date_borrowed, expected_return_date, total_fee_charged FROM transactions WHERE transaction_id = ? FOR UPDATE")) {
+                ps.setInt(1, transactionId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) { conn.rollback(); return "That request no longer exists."; }
+                    txStatus = upper(rs.getString("status"));
+                    due = rs.getDate("expected_return_date") == null ? null : rs.getDate("expected_return_date").toLocalDate();
+                    java.sql.Date dbDate = rs.getDate("date_borrowed");
+                    borrowedDate = dbDate != null ? dbDate.toLocalDate() : LocalDate.now();
+                    enteredFee = rs.getDouble("total_fee_charged");
+                }
+            }
+
+            if (!txStatus.equals("PENDING") && !txStatus.equals("RESERVED")) {
+                conn.rollback();
+                return "This request was already handled (it may have been cancelled). Refresh the list.";
+            }
+            if (due != null && due.isBefore(LocalDate.now())) {
+                conn.rollback();
+                return "The requested return date has already passed. Reject this request and ask for a new one.";
+            }
+
+            // The item's independent fees as they are right now
+            double borrowFee = 0.0;
+            double lateRate = LATE_PENALTY_PER_DAY;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT status, borrow_fee, late_fee_per_day FROM equipment WHERE equipment_id = ? FOR UPDATE")) {
+                ps.setInt(1, equipmentId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) { conn.rollback(); return "That item no longer exists."; }
+                    String eq = upper(rs.getString("status"));
+                    if (eq.equals("MAINTENANCE") || eq.equals("IN MAINTENANCE") || eq.equals("REPAIR")) {
+                        conn.rollback();
+                        return "This item is under maintenance, so it can't be handed out.";
+                    }
+                    borrowFee = rs.getDouble("borrow_fee");
+                    if (rs.wasNull() || borrowFee < 0) borrowFee = 0.0;
+                    lateRate = rs.getDouble("late_fee_per_day");
+                    if (rs.wasNull() || lateRate < 0) lateRate = LATE_PENALTY_PER_DAY;
+                }
+            }
+
+            // Multiply base daily borrow fee by precise rental days for this specific item
+            long borrowDays = (due != null) ? Math.max(1, ChronoUnit.DAYS.between(borrowedDate, due)) : 1;
+            double totalCalculatedFee = borrowFee * borrowDays;
+            // A reservation carries the price the borrower filled in - keep it instead of recalculating.
+            if (txStatus.equals("RESERVED") && enteredFee > 0) totalCalculatedFee = enteredFee;
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? AND transaction_id <> ? " +
+                            "AND UPPER(status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
+                ps.setInt(1, equipmentId);
+                ps.setInt(2, transactionId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next() && rs.getInt(1) > 0) {
+                        conn.rollback();
+                        return "This item is still checked out by someone else. Approve it after it is returned.";
+                    }
+                }
+            }
+
+            try (PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
+                 PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
+
+                stmtTx.setInt(1, adminUserId);
+                stmtTx.setDouble(2, totalCalculatedFee); // Multiplied independent fee
+                stmtTx.setDouble(3, lateRate);
+                stmtTx.setInt(4, transactionId);
+                stmtTx.executeUpdate();
+
+                stmtEq.setInt(1, equipmentId);
+                stmtEq.executeUpdate();
+
+                conn.commit();
+                return null;
+            }
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
+            }
+            System.err.println("[EquipmentDAOImpl Error] Failed to approve borrow request: " + e.getMessage());
+            return "Database error: " + e.getMessage();
+        } finally {
+            if (conn != null) {
+                try { conn.setAutoCommit(true); conn.close(); } catch (SQLException ex) { ex.printStackTrace(); }
+            }
+        }
+    }
+
+    @Override
+    public boolean rejectBorrowRequest(int transactionId, int equipmentId, int adminUserId) {
+        String updateTxSql = "UPDATE transactions SET status = 'REJECTED', processed_by = ? " +
+                "WHERE transaction_id = ? AND UPPER(status) IN ('PENDING', 'RESERVED')";
+        // A waiting request never changed the item, so only undo an old-style 'PENDING' item status.
+        String updateEqSql = "UPDATE equipment SET status = 'AVAILABLE' WHERE equipment_id = ? AND UPPER(status) = 'PENDING'";
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            try (PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
+                 PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
+
+                stmtTx.setInt(1, adminUserId);
+                stmtTx.setInt(2, transactionId);
+                if (stmtTx.executeUpdate() == 0) {
+                    conn.rollback();
+                    return false;
+                }
+
+                stmtEq.setInt(1, equipmentId);
+                stmtEq.executeUpdate();
+
+                conn.commit();
+                return true;
+            }
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException rollbackEx) { rollbackEx.printStackTrace(); }
+            }
+            System.err.println("[EquipmentDAOImpl Error] Failed to reject borrow request: " + e.getMessage());
+            return false;
+        } finally {
+            if (conn != null) {
+                try { conn.setAutoCommit(true); conn.close(); } catch (SQLException ex) { ex.printStackTrace(); }
+            }
+        }
+    }
+
+    // ================================================================== returns
+
+    @Override
+    public boolean requestReturn(int transactionId, int userId) {
+        String sql = "UPDATE transactions SET status = 'PENDING RETURN', return_requested_on = CURDATE() " +
+                "WHERE transaction_id = ? AND requested_by = ? " +
+                "AND UPPER(status) IN ('BORROWED', 'ACTIVE', 'APPROVED')";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, transactionId);
+            stmt.setInt(2, userId);
+            return stmt.executeUpdate() > 0;
+
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to request return for tx " + transactionId + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean processReturnRequest(int transactionId, int adminUserId, boolean sendToMaintenance) {
+        return processReturnRequest(transactionId, adminUserId, sendToMaintenance, null, null);
+    }
+
+    @Override
+    public boolean processReturnRequest(int transactionId, int adminUserId, boolean sendToMaintenance,
+                                        String condition, String damageReport) {
+        String getEqIdSql = "SELECT equipment_id FROM transactions WHERE transaction_id = ?";
+        // late_fee_charged is computed from return_requested_on (never from actual_return_date), because
+        // MySQL applies SET items left to right and actual_return_date is assigned right after it.
+        String updateTxSql = "UPDATE transactions SET status = 'RETURNED', " +
+                "late_fee_charged = GREATEST(0, DATEDIFF(COALESCE(return_requested_on, CURDATE()), expected_return_date)) " +
+                "                   * COALESCE(late_penalty_per_day, ?), " +
+                "actual_return_date = COALESCE(return_requested_on, CURDATE()), " +
+                "processed_by = ?, return_condition = ?, damage_report = ? " +
+                "WHERE transaction_id = ? AND UPPER(status) IN ('PENDING RETURN', 'BORROWED', 'ACTIVE', 'APPROVED')";
+
+        String updateEqSql = "UPDATE equipment SET status = ? WHERE equipment_id = ?";
+
+        String cond = (condition == null || condition.isBlank()) ? null : condition.trim();
+        String report = (damageReport == null || damageReport.isBlank()) ? null : damageReport.trim();
+
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try (PreparedStatement stmtGet = conn.prepareStatement(getEqIdSql);
+                 PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
+                 PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {
+
+                stmtGet.setInt(1, transactionId);
+                int equipmentId;
+                try (ResultSet rs = stmtGet.executeQuery()) {
+                    if (!rs.next()) {
+                        System.err.println("[EquipmentDAOImpl Error] Transaction ID not found.");
+                        conn.rollback();
+                        return false;
+                    }
+                    equipmentId = rs.getInt("equipment_id");
+                }
+
+                stmtTx.setDouble(1, LATE_PENALTY_PER_DAY);
+                stmtTx.setInt(2, adminUserId);
+                stmtTx.setString(3, cond);
+                stmtTx.setString(4, report);
+                stmtTx.setInt(5, transactionId);
+                if (stmtTx.executeUpdate() == 0) {
+                    // already processed
+                    conn.rollback();
+                    return false;
+                }
+
+                // Worn / damaged items go to the Maintenance Log instead of back into the catalog
+                stmtEq.setString(1, sendToMaintenance ? "MAINTENANCE" : "AVAILABLE");
+                stmtEq.setInt(2, equipmentId);
+                stmtEq.executeUpdate();
+
+                conn.commit();
+                return true;
+
+            } catch (SQLException e) {
+                conn.rollback();
+                System.err.println("[EquipmentDAOImpl Error] Return transaction failed, rolled back: " + e.getMessage());
+                return false;
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Database connection failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public DamageReport getLatestDamageReport(int equipmentId) {
+        String sql = "SELECT transaction_id, borrower_name, return_condition, damage_report, actual_return_date " +
+                "FROM transactions WHERE equipment_id = ? AND damage_report IS NOT NULL AND damage_report <> '' " +
+                "ORDER BY transaction_id DESC LIMIT 1";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, equipmentId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return null;
+                java.sql.Date d = rs.getDate("actual_return_date");
+                return new DamageReport(
+                        rs.getInt("transaction_id"),
+                        rs.getString("borrower_name"),
+                        rs.getString("return_condition"),
+                        rs.getString("damage_report"),
+                        d == null ? null : d.toLocalDate());
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to load damage report: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // ================================================================== receipt
+
+    @Override
+    public Receipt getReceiptForTransaction(int transactionId) {
+        String sql = "SELECT t.transaction_id, t.status, t.borrower_name, t.borrower_type, t.borrower_id_number, " +
+                "t.program_or_dept, t.date_borrowed, t.expected_return_date, t.actual_return_date, " +
+                "t.total_fee_charged, t.late_penalty_per_day, t.initial_condition, " +
+                "e.item_name, e.category, e.serial_number, " +
+                "u_req.username AS requester_username, u_proc.username AS processor_username " +
+                "FROM transactions t " +
+                "JOIN equipment e ON t.equipment_id = e.equipment_id " +
+                "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
+                "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id " +
+                "WHERE t.transaction_id = ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, transactionId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) return null;
+
+                java.sql.Date borrowed = rs.getDate("date_borrowed");
+                java.sql.Date due = rs.getDate("expected_return_date");
+                java.sql.Date returned = rs.getDate("actual_return_date");
+
+                return new Receipt(
+                        rs.getInt("transaction_id"),
+                        receiptStatusLabel(rs.getString("status"), due != null ? due.toLocalDate() : null),
+                        rs.getString("item_name"),
+                        rs.getString("category"),
+                        rs.getString("serial_number"),
+                        rs.getString("borrower_name"),
+                        rs.getString("borrower_type"),
+                        rs.getString("borrower_id_number"),
+                        rs.getString("program_or_dept"),
+                        borrowed != null ? borrowed.toLocalDate() : null,
+                        due != null ? due.toLocalDate() : null,
+                        returned != null ? returned.toLocalDate() : null,
+                        rs.getDouble("total_fee_charged"),
+                        rs.getDouble("late_penalty_per_day"),
+                        rs.getString("initial_condition"),
+                        rs.getString("requester_username"),
+                        rs.getString("processor_username")
+                );
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to load receipt for tx " + transactionId + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** Same wording the Audit History table uses for the status column. */
+    private static String receiptStatusLabel(String rawStatus, LocalDate due) {
+        if ("RETURNED".equalsIgnoreCase(rawStatus)) return "Returned";
+        if ("REJECTED".equalsIgnoreCase(rawStatus)) return "Rejected";
+        if ("CANCELLED".equalsIgnoreCase(rawStatus)) return "Cancelled";
+        if ("RESERVED".equalsIgnoreCase(rawStatus)) return "Reserved";
+        if ("PENDING RETURN".equalsIgnoreCase(rawStatus)) return "Pending Return";
+        if ("BORROWED".equalsIgnoreCase(rawStatus)) {
+            return (due != null && due.isBefore(LocalDate.now())) ? "Overdue" : "Active";
+        }
+        return "Pending";
+    }
+}
