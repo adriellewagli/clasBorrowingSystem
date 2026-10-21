@@ -45,6 +45,7 @@ public class MyBorrowsController extends BaseController {
     @FXML private ReceiptOverlay receiptOverlay;
 
     @FXML private Button btnRefresh;
+    @FXML private TextField txtSearch;
 
     @FXML private Label lblActiveLoansCount;
     @FXML private Label lblOverdueCount;
@@ -65,10 +66,24 @@ public class MyBorrowsController extends BaseController {
         sorted.comparatorProperty().bind(tblActiveBorrows.comparatorProperty());
         tblActiveBorrows.setItems(sorted);
         TableCells.bindCount(lblRowCount, filtered, activeBorrowsList);
-        new ActionFilter<>(cmbActionFilter, activeBorrowsList, filtered, BorrowedItem::getStatus);
+        ActionFilter<BorrowedItem> actionFilter =
+                new ActionFilter<>(cmbActionFilter, activeBorrowsList, filtered, BorrowedItem::getStatus);
+        txtSearch.textProperty().addListener((obs, o, n) -> actionFilter.setSearch(item -> {
+            if (n == null || n.isBlank()) return true;
+            String f = n.toLowerCase().trim();
+            return String.valueOf(item.getBorrowId()).contains(f)
+                    || has(item.getBorrowerName(), f)
+                    || has(item.getEquipmentName(), f)
+                    || has(item.getSerialNumber(), f)
+                    || has(item.getStatus(), f);
+        }));
         loadEquipmentData();
         // an approval (or a return check-in) done by an admin shows up without pressing Refresh
         util.LiveRefresh.poll(tblActiveBorrows, activeBorrowsList, this::fetchBorrows, this::updateSummaryMetrics);
+    }
+
+    private static boolean has(String v, String f) {
+        return v != null && v.toLowerCase().contains(f);
     }
 
     private List<BorrowedItem> fetchBorrows() {

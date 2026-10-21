@@ -48,7 +48,6 @@ public class AdminDashboardController extends BaseController {
     @FXML private Button btnNavReturns;
     @FXML private Button btnNavRequests;
     @FXML private Button btnNavCatalog;
-    @FXML private Button btnNavBorrowCart;
     @FXML private Button btnNavInventory;
     @FXML private Button btnNavMaintenance;
     @FXML private Button btnNavHistory;
@@ -128,29 +127,8 @@ public class AdminDashboardController extends BaseController {
         setupSearch();
         loadTransactionData();
         setupRequestBadge();
-        setupCartBadge();
 
         returnsWatcher = LiveRefresh.watch(tblTransactions, LiveRefresh.DEFAULT_SECONDS, false, this::refreshReturnsInBackground);
-    }
-
-    private void setupCartBadge() {
-        if (btnNavBorrowCart == null) return;
-
-        // Listen to changes on the shared catalog cart list
-        controller.user.EquipmentCatalogController.getQueuedCartList().addListener(
-                (javafx.collections.ListChangeListener<model.Equipment>) change -> updateCartButtonText()
-        );
-        updateCartButtonText(); // Set initial text
-    }
-
-    private void updateCartButtonText() {
-        if (btnNavBorrowCart == null) return;
-        int count = controller.user.EquipmentCatalogController.getQueuedCartList().size();
-        if (count > 0) {
-            btnNavBorrowCart.setText("Borrow Request (" + count + ")");
-        } else {
-            btnNavBorrowCart.setText("Borrow Request");
-        }
     }
 
     private void setupRequestBadge() {
@@ -391,27 +369,8 @@ public class AdminDashboardController extends BaseController {
     private void handleViewCatalog(ActionEvent event) {
         if (isNavigating || currentActiveButton == btnNavCatalog) return;
 
-        // Loads the newly created standalone equipment catalog view into the admin center container
-        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/admin/equipment_catalog.fxml", btnNavCatalog);
-    }
-
-    @FXML
-    private void handleViewBorrowCart(ActionEvent event) {
-        if (isNavigating || currentActiveButton == btnNavBorrowCart) return;
-
-        try {
-            // Load the borrow request view dynamically
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/borrowclas/clasborrowingsystem/fxml/user/borrow_request_cart.fxml"));
-            Node borrowCartView = loader.load();
-
-            updateActiveSidebarButton(btnNavBorrowCart);
-            if (dynamicContentArea != null) {
-                switchViewWithLock(borrowCartView);
-            }
-        } catch (IOException e) {
-            System.err.println("[AdminDashboardController] Error loading borrow_request_cart.fxml: " + e.getMessage());
-            e.printStackTrace();
-        }
+        // the single Borrow Equipment screen: pick equipment, fill in the borrower, reserve
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/user/borrow_equipment.fxml", btnNavCatalog);
     }
 
     @FXML
@@ -513,7 +472,7 @@ public class AdminDashboardController extends BaseController {
     private void updateActiveSidebarButton(Button activeButton) {
         currentActiveButton = activeButton;
         Button[] buttons = {
-                btnNavReturns, btnNavRequests, btnNavCatalog, btnNavBorrowCart,
+                btnNavReturns, btnNavRequests, btnNavCatalog,
                 btnNavInventory, btnNavMaintenance, btnNavHistory, btnNavUsage,
                 btnNavAccounts, btnNavFees, btnNavPasswordRequests // <-- Add btnNavPasswordRequests here
         };
@@ -535,6 +494,7 @@ public class AdminDashboardController extends BaseController {
 
     @FXML
     private void handleLogout() throws IOException {
+        controller.user.BorrowEquipmentController.clearQueue();
         stopBadgeTimer();
         if (returnsWatcher != null) returnsWatcher.stop();
         UserSession.cleanUserSession();

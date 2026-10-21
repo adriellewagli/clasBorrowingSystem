@@ -75,6 +75,22 @@ public interface EquipmentDAO {
             byte[] idSnapshotBytes
     );
 
+    /** Same as above, with the price of each item (equipment id -> price) entered with the request. */
+    String submitBatchBorrowRequest(
+            List<Integer> equipmentIds,
+            Map<Integer, LocalDate> returnDates,
+            Map<Integer, Double> prices,
+            String borrowerName,
+            String borrowerType,
+            String borrowerIdNumber,
+            String programOrDept,
+            int requestedByUserId,
+            byte[] idSnapshotBytes
+    );
+
+    /** Periods ({start, end}) in which the item is already out, requested or reserved, from today on. */
+    List<LocalDate[]> getBookedRanges(int equipmentId);
+
     String createReservation(
             int equipmentId,
             String borrowerName,

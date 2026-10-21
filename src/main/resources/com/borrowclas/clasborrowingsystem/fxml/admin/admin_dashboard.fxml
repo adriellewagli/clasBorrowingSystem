@@ -47,8 +47,7 @@
 
                 <Button fx:id="btnNavReturns" text="Process Returns" styleClass="sidebar-btn-active" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewReturns"/>
                 <Button fx:id="btnNavRequests" text="Manage Requests" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewRequests"/>
-                <Button fx:id="btnNavCatalog" text="Equipment Catalog" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewCatalog"/>
-                <Button fx:id="btnNavBorrowCart" text="Borrow Request" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewBorrowCart"/>
+                <Button fx:id="btnNavCatalog" text="Borrow Equipment" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewCatalog"/>
                 <Button fx:id="btnNavInventory" text="Manage Inventory" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewInventory"/>
                 <Button fx:id="btnNavMaintenance" text="Maintenance Log" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewMaintenance"/>
                 <Button fx:id="btnNavHistory" text="Audit History" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewHistory"/>

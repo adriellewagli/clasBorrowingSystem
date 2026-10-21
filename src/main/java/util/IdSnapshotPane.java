@@ -119,6 +119,9 @@ public final class IdSnapshotPane extends VBox {
         btnRetake.setManaged(false);
     }
 
+    /** Clears the photo and goes back to the start state (used after a form is submitted). */
+    public void reset() { onRetake(); }
+
     /** Releases the camera. Safe to call more than once. */
     public void close() {
         cameraRunning = false;

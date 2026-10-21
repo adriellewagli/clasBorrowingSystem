@@ -32,6 +32,7 @@
     <!-- HEADER & REFRESH BAR -->
     <HBox alignment="CENTER_LEFT" spacing="12">
         <Label text="Active Equipment Borrowings" styleClass="header-title" style="-fx-text-fill: #0f172a;"/>
+        <TextField fx:id="txtSearch" promptText="Search borrower, equipment, or serial..." styleClass="clean-search-field" prefWidth="320"/>
         <Region HBox.hgrow="ALWAYS"/>
         <ComboBox fx:id="cmbActionFilter" prefWidth="190" prefHeight="40"/>
         <Button fx:id="btnRefresh" text="🔄 Refresh" styleClass="filter-chip" onAction="#handleRefresh"/>

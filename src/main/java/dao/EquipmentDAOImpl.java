@@ -215,6 +215,16 @@ public class EquipmentDAOImpl implements EquipmentDAO {
     public String submitBatchBorrowRequest(List<Integer> equipmentIds, Map<Integer, LocalDate> returnDates,
                                            String borrowerName, String borrowerType, String borrowerIdNumber,
                                            String programOrDept, int requestedByUserId, byte[] idSnapshotBytes) {
+        // old callers have no prices: every item is recorded at 0.00
+        return submitBatchBorrowRequest(equipmentIds, returnDates, new java.util.HashMap<>(), borrowerName,
+                borrowerType, borrowerIdNumber, programOrDept, requestedByUserId, idSnapshotBytes);
+    }
+
+    @Override
+    public String submitBatchBorrowRequest(List<Integer> equipmentIds, Map<Integer, LocalDate> returnDates,
+                                           Map<Integer, Double> prices,
+                                           String borrowerName, String borrowerType, String borrowerIdNumber,
+                                           String programOrDept, int requestedByUserId, byte[] idSnapshotBytes) {
 
         if (equipmentIds == null || equipmentIds.isEmpty() || returnDates == null) return "Nothing to submit.";
 
@@ -224,7 +234,9 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 "(equipment_id, requested_by, borrower_name, date_borrowed, expected_return_date, status, processed_by, " +
                 "borrower_type, borrower_id_number, program_or_dept, initial_condition, daily_fee, " +
                 "late_penalty_per_day, total_fee_charged, id_snapshot) " +
-                "VALUES (?, ?, ?, CURDATE(), ?, 'PENDING', ?, ?, ?, ?, 'Good', 0.00, ?, 0.00, ?)";
+                "VALUES (?, ?, ?, CURDATE(), ?, 'PENDING', ?, ?, ?, ?, 'Good', 0.00, ?, ?, ?)";
+
+        LocalDate today = LocalDate.now();
 
         Connection conn = null;
         try {
@@ -249,27 +261,38 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     conn.rollback();
                     return "'" + name + "' is under maintenance and can't be requested.";
                 }
-                try (PreparedStatement ps = conn.prepareStatement(
-                        "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? " +
-                                "AND UPPER(status) IN ('PENDING', 'BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
-                    ps.setInt(1, eqId);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next() && rs.getInt(1) > 0) {
-                            conn.rollback();
-                            return "'" + name + "' already has a pending request or is checked out. "
-                                    + "Remove it from your queue (or use Reserve) and try again.";
-                        }
+
+                LocalDate due = returnDates.get(eqId);
+                if (due == null || due.isBefore(today.plusDays(1))) {
+                    conn.rollback();
+                    return "Choose a return date (tomorrow or later) for '" + name + "'.";
+                }
+
+                Double price = prices == null ? null : prices.get(eqId);
+                double fee = price == null ? 0.0 : price;
+                if (Double.isNaN(fee) || fee < 0) { conn.rollback(); return "The price for '" + name + "' can't be negative."; }
+                if (fee > MAX_FEE) {
+                    conn.rollback();
+                    return "The price for '" + name + "' is too high. The most you can enter is " + String.format("%,.0f", MAX_FEE) + ".";
+                }
+
+                // the item is needed from today until the return date: nobody else may hold it in that window
+                LocalDate[] clash = firstOverlap(bookedWindows(conn, eqId), today, due);
+                if (clash != null) {
+                    conn.rollback();
+                    if (!clash[0].isAfter(today)) {
+                        return "'" + name + "' already has a pending request or is checked out. "
+                                + "Remove it from your queue (or use Reserve) and try again.";
                     }
+                    return "'" + name + "' is reserved from " + clash[0] + " to " + clash[1]
+                            + ". Choose a return date before " + clash[0] + ", or reserve it for a later date.";
                 }
             }
 
             try (PreparedStatement stmtInsert = conn.prepareStatement(insertSql)) {
                 for (int eqId : ids) {
                     LocalDate due = returnDates.get(eqId);
-                    if (due == null) {
-                        conn.rollback();
-                        return "Choose a return date for every item.";
-                    }
+                    Double price = prices == null ? null : prices.get(eqId);
                     stmtInsert.setInt(1, eqId);
                     stmtInsert.setInt(2, validUserId);
                     stmtInsert.setString(3, borrowerName);
@@ -279,11 +302,12 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     stmtInsert.setString(7, borrowerIdNumber);
                     stmtInsert.setString(8, programOrDept);
                     stmtInsert.setDouble(9, LATE_PENALTY_PER_DAY);
+                    stmtInsert.setDouble(10, price == null ? 0.0 : price);
 
                     if (idSnapshotBytes != null && idSnapshotBytes.length > 0) {
-                        stmtInsert.setBytes(10, idSnapshotBytes);
+                        stmtInsert.setBytes(11, idSnapshotBytes);
                     } else {
-                        stmtInsert.setNull(10, java.sql.Types.BLOB);
+                        stmtInsert.setNull(11, java.sql.Types.BLOB);
                     }
                     stmtInsert.addBatch();
                 }
@@ -313,28 +337,70 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
     // ================================================================== reservations
 
-    private static LocalDate latestHold(Connection conn, int equipmentId) throws SQLException {
-        String sql = "SELECT MAX(expected_return_date) FROM transactions " +
-                "WHERE equipment_id = ? AND UPPER(status) IN ('PENDING', 'BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')";
+    /**
+     * Every period during which an item is spoken for: [start, end] pairs, oldest first.
+     * A request or loan that is still out counts until it is returned (an overdue one blocks up to today);
+     * a reservation counts for exactly its pick-up .. return dates.
+     */
+    private static List<LocalDate[]> bookedWindows(Connection conn, int equipmentId) throws SQLException {
+        List<LocalDate[]> windows = new ArrayList<>();
+        String sql = "SELECT UPPER(status) AS st, date_borrowed, expected_return_date FROM transactions " +
+                "WHERE equipment_id = ? AND UPPER(status) IN " +
+                "('PENDING', 'RESERVED', 'BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN') " +
+                "ORDER BY date_borrowed";
+        LocalDate today = LocalDate.now();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, equipmentId);
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next() && rs.getDate(1) != null) return rs.getDate(1).toLocalDate();
+                while (rs.next()) {
+                    LocalDate start = rs.getDate("date_borrowed") == null ? today : rs.getDate("date_borrowed").toLocalDate();
+                    LocalDate end = rs.getDate("expected_return_date") == null ? start : rs.getDate("expected_return_date").toLocalDate();
+                    if (!"RESERVED".equals(rs.getString("st")) && end.isBefore(today)) end = today; // still out, overdue
+                    if (end.isBefore(start)) end = start;
+                    windows.add(new LocalDate[]{start, end});
+                }
             }
+        }
+        return windows;
+    }
+
+    /** The first booked window that overlaps from..to (both days included), or null if the dates are free. */
+    private static LocalDate[] firstOverlap(List<LocalDate[]> windows, LocalDate from, LocalDate to) {
+        for (LocalDate[] w : windows) {
+            if (!w[0].isAfter(to) && !w[1].isBefore(from)) return w;
         }
         return null;
     }
 
     @Override
-    public LocalDate getEarliestReservationDate(int equipmentId) {
-        LocalDate tomorrow = LocalDate.now().plusDays(1);
+    public List<LocalDate[]> getBookedRanges(int equipmentId) {
+        List<LocalDate[]> result = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection()) {
-            LocalDate hold = latestHold(conn, equipmentId);
-            if (hold != null && !hold.plusDays(1).isBefore(tomorrow)) return hold.plusDays(1);
+            LocalDate today = LocalDate.now();
+            for (LocalDate[] w : bookedWindows(conn, equipmentId)) {
+                if (!w[1].isBefore(today)) result.add(w);
+            }
         } catch (SQLException e) {
-            System.err.println("[EquipmentDAOImpl Error] Failed to read earliest reservation date: " + e.getMessage());
+            System.err.println("[EquipmentDAOImpl Error] Failed to read booked dates: " + e.getMessage());
         }
-        return tomorrow;
+        return result;
+    }
+
+    @Override
+    public LocalDate getEarliestReservationDate(int equipmentId) {
+        LocalDate d = LocalDate.now().plusDays(1);
+        List<LocalDate[]> windows = getBookedRanges(equipmentId);
+        boolean moved = true;
+        while (moved) {
+            moved = false;
+            for (LocalDate[] w : windows) {
+                if (!d.isBefore(w[0]) && !d.isAfter(w[1])) {
+                    d = w[1].plusDays(1);
+                    moved = true;
+                }
+            }
+        }
+        return d;
     }
 
     @Override
@@ -364,9 +430,10 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 }
             }
 
-            LocalDate hold = latestHold(conn, equipmentId);
-            if (hold != null && !pickupDate.isAfter(hold)) {
-                return "This item is already out or requested until " + hold + ". Choose a pick-up date after that.";
+            LocalDate[] clash = firstOverlap(bookedWindows(conn, equipmentId), pickupDate, returnDate);
+            if (clash != null) {
+                return "This item is already booked from " + clash[0] + " to " + clash[1]
+                        + ". Choose pick-up and return dates that don't overlap it.";
             }
 
             int uid = requestedByUserId > 0 ? requestedByUserId : 1;
@@ -561,13 +628,8 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         if (rs.wasNull() || rate < 0) rate = LATE_PENALTY_PER_DAY;
         double fee = rs.getDouble("total_fee_charged");
         if (waiting) {
+            // the price was entered with the request and is already in total_fee_charged
             rate = moneyOrDefault(rs, "item_late_fee", rate);
-            double perDay = moneyOrDefault(rs, "item_borrow_fee", 0.0);
-            LocalDate from = date(rs, "date_borrowed");
-            long rentalDays = (due != null && from != null) ? Math.max(1, ChronoUnit.DAYS.between(from, due)) : 1;
-            if (!(raw.equals("RESERVED") && fee > 0)) {
-                fee = perDay > 0 ? perDay * rentalDays : fee;
-            }
         }
 
         LocalDate actual = date(rs, "actual_return_date");
@@ -837,7 +899,23 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 return "This request was already handled. Refresh the list.";
             }
 
-            double borrowFee = 0.0;
+            if (txStatus.equals("RESERVED") && borrowedDate.isAfter(LocalDate.now())) {
+                conn.rollback();
+                return "This reservation starts on " + borrowedDate + ". It can be approved (handed over) from that day.";
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM transactions WHERE equipment_id = ? AND transaction_id <> ? " +
+                            "AND UPPER(status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')")) {
+                ps.setInt(1, equipmentId);
+                ps.setInt(2, transactionId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next() && rs.getInt(1) > 0) {
+                        conn.rollback();
+                        return "This item is still checked out by someone else. Approve it after it has been returned.";
+                    }
+                }
+            }
+
             double lateRate = LATE_PENALTY_PER_DAY;
             try (PreparedStatement ps = conn.prepareStatement(
                     "SELECT status, borrow_fee, late_fee_per_day FROM equipment WHERE equipment_id = ? FOR UPDATE")) {
@@ -849,16 +927,13 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                         conn.rollback();
                         return "This item is under maintenance, so it can't be handed out.";
                     }
-                    borrowFee = rs.getDouble("borrow_fee");
-                    if (rs.wasNull() || borrowFee < 0) borrowFee = 0.0;
                     lateRate = rs.getDouble("late_fee_per_day");
                     if (rs.wasNull() || lateRate < 0) lateRate = LATE_PENALTY_PER_DAY;
                 }
             }
 
-            long borrowDays = (due != null) ? Math.max(1, ChronoUnit.DAYS.between(borrowedDate, due)) : 1;
-            double totalCalculatedFee = borrowFee * borrowDays;
-            if (txStatus.equals("RESERVED") && enteredFee > 0) totalCalculatedFee = enteredFee;
+            // the price entered with the request is the price charged
+            double totalCalculatedFee = enteredFee;
 
             try (PreparedStatement stmtTx = conn.prepareStatement(updateTxSql);
                  PreparedStatement stmtEq = conn.prepareStatement(updateEqSql)) {

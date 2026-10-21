@@ -7,6 +7,8 @@ import db.DatabaseConnection;
 import javafx.animation.FadeTransition;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
+import javafx.collections.transformation.SortedList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.geometry.Rectangle2D;
@@ -34,6 +36,7 @@ import javafx.stage.StageStyle;
 import javafx.stage.Window;
 public class PasswordRequestsController {
 
+    @FXML private TextField txtSearch;
     @FXML private TableView<PasswordTicket> tblTickets;
     @FXML private TableColumn<PasswordTicket, Integer> colTicketId;
     @FXML private TableColumn<PasswordTicket, String> colUsername;
@@ -58,15 +61,31 @@ public class PasswordRequestsController {
         if (tblTickets != null) {
             TableCells.modernize(tblTickets);
         }
+        FilteredList<PasswordTicket> filtered = new FilteredList<>(ticketList, t -> true);
+        if (txtSearch != null) {
+            txtSearch.textProperty().addListener((obs, o, n) -> filtered.setPredicate(t -> {
+                if (n == null || n.isBlank()) return true;
+                String f = n.toLowerCase().trim();
+                return String.valueOf(t.getTicketId()).contains(f)
+                        || has(t.getUsername(), f)
+                        || has(t.getFullName(), f);
+            }));
+        }
+        if (tblTickets != null) {
+            SortedList<PasswordTicket> sorted = new SortedList<>(filtered);
+            sorted.comparatorProperty().bind(tblTickets.comparatorProperty());
+            tblTickets.setItems(sorted);
+        }
         loadTickets();
+    }
+
+    private static boolean has(String v, String f) {
+        return v != null && v.toLowerCase().contains(f);
     }
 
     @FXML
     public void loadTickets() {
         ticketList.setAll(equipmentDAO.getPendingPasswordTickets());
-        if (tblTickets != null) {
-            tblTickets.setItems(ticketList);
-        }
     }
 
     private void handleApprove(PasswordTicket ticket) {

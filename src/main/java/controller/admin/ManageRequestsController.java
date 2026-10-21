@@ -99,6 +99,14 @@ public class ManageRequestsController extends BaseController {
         if (item == null) return;
         javafx.stage.Window owner = tblRequests.getScene() != null ? tblRequests.getScene().getWindow() : null;
 
+        // a reservation is handed over on its pick-up day, not before
+        if ("Reservation".equalsIgnoreCase(item.getRequestType())
+                && item.getBorrowDate() != null && item.getBorrowDate().isAfter(LocalDate.now())) {
+            showErrorDialog("Not yet", "This reservation starts on " + item.getBorrowDate()
+                    + ". It can be approved (handed over) from that day.");
+            return;
+        }
+
         // "Are you sure?" pop-up - the fees come from the item's settings (Super Admin > Fees & Penalties).
         if (!ApproveBorrowDialog.show(owner, item)) return;
 

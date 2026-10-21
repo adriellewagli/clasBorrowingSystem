@@ -22,8 +22,9 @@ import model.Equipment;
 import model.UserSession;
 
 import java.time.LocalDate;
+import java.util.List;
 
-/** Reserve an item that is currently out (or requested) for a later date. */
+/** Reserve an item for a person: pick-up date, return date and price. Works for any item, available or not. */
 public final class ReserveDialog {
 
     private ReserveDialog() {}
@@ -34,12 +35,14 @@ public final class ReserveDialog {
         boolean[] saved = {false};
 
         LocalDate earliest = dao.getEarliestReservationDate(item.getId());
+        List<LocalDate[]> booked = dao.getBookedRanges(item.getId());
 
         Label title = new Label("Reserve " + item.getName());
         title.getStyleClass().add("modal-title");
 
-        Label subtitle = new Label("This item is not available right now. Reserve it for a later date - an admin will "
-                + "approve the reservation. Earliest pick-up: " + earliest + ".");
+        Label subtitle = new Label("Hold this item for someone on a later date. Choose when they will pick it up and "
+                + "when they will return it. Days that are already booked are greyed out. "
+                + "Earliest pick-up: " + earliest + ".");
         subtitle.getStyleClass().add("page-subtitle");
         subtitle.setWrapText(true);
         subtitle.setMinHeight(Region.USE_PREF_SIZE);
@@ -71,23 +74,39 @@ public final class ReserveDialog {
         rbStudent.setOnAction(e -> swap(true, idLabel, txtId, idError, programLabel, cmbProgram));
         rbFaculty.setOnAction(e -> swap(false, idLabel, txtId, idError, programLabel, cmbProgram));
 
-        DatePicker dpPickup = datePicker(earliest);
-        dpPickup.setValue(earliest);
-        DatePicker dpReturn = datePicker(earliest);
-        dpReturn.setValue(earliest.plusDays(3));
-        // keep the return date on or after the pick-up date
-        dpPickup.valueProperty().addListener((obs, o, n) -> {
-            if (n != null && (dpReturn.getValue() == null || dpReturn.getValue().isBefore(n))) {
-                dpReturn.setValue(n.plusDays(1));
+        DatePicker dpPickup = new DatePicker();
+        dpPickup.setEditable(false);
+        dpPickup.setMaxWidth(Double.MAX_VALUE);
+        dpPickup.setDayCellFactory(p -> new DateCell() {
+            @Override public void updateItem(LocalDate d, boolean empty) {
+                super.updateItem(d, empty);
+                setDisable(empty || d.isBefore(earliestAllowed()) || isBooked(booked, d));
             }
         });
+        DatePicker dpReturn = new DatePicker();
+        dpReturn.setEditable(false);
+        dpReturn.setMaxWidth(Double.MAX_VALUE);
         dpReturn.setDayCellFactory(p -> new DateCell() {
             @Override public void updateItem(LocalDate d, boolean empty) {
                 super.updateItem(d, empty);
                 LocalDate min = dpPickup.getValue() != null ? dpPickup.getValue() : earliest;
-                setDisable(empty || d.isBefore(min));
+                LocalDate block = nextBlock(booked, min);
+                setDisable(empty || d.isBefore(min) || (block != null && !d.isBefore(block)));
             }
         });
+        // keep the return date inside the free days that follow the pick-up date
+        dpPickup.valueProperty().addListener((obs, o, n) -> {
+            if (n == null) return;
+            LocalDate block = nextBlock(booked, n);
+            LocalDate last = block == null ? null : block.minusDays(1);
+            LocalDate ret = dpReturn.getValue();
+            if (ret == null || ret.isBefore(n) || (last != null && ret.isAfter(last))) {
+                LocalDate fallback = n.plusDays(3);
+                if (last != null && fallback.isAfter(last)) fallback = last;
+                dpReturn.setValue(fallback);
+            }
+        });
+        dpPickup.setValue(earliest);
 
         // ID snapshot - required, same as a normal borrow request
         IdSnapshotPane snapshot = new IdSnapshotPane();
@@ -204,17 +223,24 @@ public final class ReserveDialog {
         }
     }
 
-    private static DatePicker datePicker(LocalDate min) {
-        DatePicker dp = new DatePicker();
-        dp.setEditable(false);
-        dp.setMaxWidth(Double.MAX_VALUE);
-        dp.setDayCellFactory(p -> new DateCell() {
-            @Override public void updateItem(LocalDate d, boolean empty) {
-                super.updateItem(d, empty);
-                setDisable(empty || d.isBefore(min));
-            }
-        });
-        return dp;
+    private static LocalDate earliestAllowed() {
+        return LocalDate.now().plusDays(1);
+    }
+
+    private static boolean isBooked(List<LocalDate[]> booked, LocalDate d) {
+        for (LocalDate[] w : booked) {
+            if (!d.isBefore(w[0]) && !d.isAfter(w[1])) return true;
+        }
+        return false;
+    }
+
+    /** The first booked day after {@code after}, or null when nothing is booked later. */
+    private static LocalDate nextBlock(List<LocalDate[]> booked, LocalDate after) {
+        LocalDate next = null;
+        for (LocalDate[] w : booked) {
+            if (w[0].isAfter(after) && (next == null || w[0].isBefore(next))) next = w[0];
+        }
+        return next;
     }
 
     private static VBox grow(VBox box) {
