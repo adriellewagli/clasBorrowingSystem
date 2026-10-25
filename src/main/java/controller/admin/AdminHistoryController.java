@@ -115,7 +115,7 @@ public class AdminHistoryController extends BaseController {
         filteredData = new FilteredList<>(auditList, p -> true);
         SortedList<BorrowedItem> sorted = new SortedList<>(filteredData);
         sorted.comparatorProperty().bind(tblAuditHistory.comparatorProperty());
-        tblAuditHistory.setItems(sorted);
+        util.TablePager.install(tblAuditHistory, filteredData, sorted);
         TableCells.bindCount(lblRowCount, filteredData, auditList);
 
         txtSearch.textProperty().addListener((obs, oldV, newV) -> applyFilters());

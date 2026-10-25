@@ -143,6 +143,7 @@ public class DatabaseConnection {
     private static void addEquipmentFeeColumns(Connection conn) {
         addColumnIfMissing(conn, "equipment", "borrow_fee", "DECIMAL(10,2) NOT NULL DEFAULT 0");
         addColumnIfMissing(conn, "equipment", "late_fee_per_day", "DECIMAL(10,2) NOT NULL DEFAULT 50");
+        addColumnIfMissing(conn, "equipment", "is_disabled", "TINYINT(1) NOT NULL DEFAULT 0");
     }
 
     private static void seedFirstSuperAdmin(Connection conn) {

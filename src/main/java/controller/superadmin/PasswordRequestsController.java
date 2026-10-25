@@ -74,7 +74,7 @@ public class PasswordRequestsController {
         if (tblTickets != null) {
             SortedList<PasswordTicket> sorted = new SortedList<>(filtered);
             sorted.comparatorProperty().bind(tblTickets.comparatorProperty());
-            tblTickets.setItems(sorted);
+            util.TablePager.install(tblTickets, filtered, sorted);
         }
         loadTickets();
     }

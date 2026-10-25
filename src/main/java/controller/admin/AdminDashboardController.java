@@ -194,7 +194,7 @@ public class AdminDashboardController extends BaseController {
         filteredList = new FilteredList<>(transactionList, t -> true);
         SortedList<BorrowedItem> sorted = new SortedList<>(filteredList);
         sorted.comparatorProperty().bind(tblTransactions.comparatorProperty());
-        tblTransactions.setItems(sorted);
+        util.TablePager.install(tblTransactions, filteredList, sorted);
 
         actionFilter = new ActionFilter<>(cmbActionFilter, transactionList, filteredList, BorrowedItem::getStatus);
         if (txtSearch != null) {

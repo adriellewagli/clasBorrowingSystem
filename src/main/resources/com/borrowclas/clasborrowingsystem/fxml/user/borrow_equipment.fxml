@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
@@ -15,7 +16,7 @@
     <HBox alignment="CENTER_LEFT" spacing="16">
         <VBox spacing="3" HBox.hgrow="ALWAYS">
             <Label text="Borrow Equipment" styleClass="page-title"/>
-            <Label text="Add the equipment to the queue, set each item's return date and price, then fill in the borrower's details. Use Reserve to hold an item for a later date."
+            <Label text="Add the equipment to the queue, set each item's return date, then fill in the borrower's details. Use Reserve to hold an item for a later date."
                    styleClass="page-subtitle" wrapText="true"/>
         </VBox>
         <Button fx:id="btnRefreshData" text="🔄 Refresh Data" styleClass="btn-secondary" onAction="#handleManualRefresh"/>
@@ -69,7 +70,7 @@
                     <columns>
                         <TableColumn fx:id="colCartName" text="EQUIPMENT" prefWidth="200"/>
                         <TableColumn fx:id="colCartReturn" text="RETURN DATE" prefWidth="170" sortable="false"/>
-                        <TableColumn fx:id="colCartPrice" text="PRICE (₱)" prefWidth="130" sortable="false"/>
+                        <TableColumn fx:id="colCartPrice" text="BORROWING FEE (₱)" prefWidth="130" sortable="false"/>
                         <TableColumn fx:id="colCartAction" text="" prefWidth="100" resizable="false" sortable="false"/>
                     </columns>
                     <columnResizePolicy>
@@ -146,7 +147,7 @@
 
                     <VBox spacing="8">
                         <Label text="Return Schedule" styleClass="modal-label"/>
-                        <Label text="Each item has its own return date and price in the queue. Use these buttons to give every item the same deadline, then adjust any item you need."
+                        <Label text="Each item has its own return date in the queue. Use these buttons to give every item the same deadline, then adjust any item you need."
                                styleClass="field-hint-text" wrapText="true"/>
                         <HBox spacing="8" alignment="CENTER_LEFT">
                             <Label text="Set all to:" styleClass="fee-label"/>

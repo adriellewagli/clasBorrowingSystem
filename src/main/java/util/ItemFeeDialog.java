@@ -3,8 +3,10 @@ package util;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.RadioButton;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextFormatter;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -15,14 +17,16 @@ import model.ItemFee;
 
 import java.util.Locale;
 
-/** Pop-up where the Super Admin edits one item's borrowing fee and late fee per day. */
+/** Pop-up to set one item's fees: the default fee, or a modified (custom) fee. */
 public final class ItemFeeDialog {
 
     private static final double MAX_FEE = 100_000;
+    public static final double DEFAULT_BORROW_FEE = 0.00;
+    public static final double DEFAULT_LATE_FEE = 50.00;
 
     private ItemFeeDialog() {}
 
-    /** @return {borrowingFee, lateFeePerDay}, or null if the Super Admin cancelled. */
+    /** @return {borrowingFee, lateFeePerDay}, or null if cancelled. */
     public static double[] show(Window owner, ItemFee item) {
         double[][] result = {null};
 
@@ -38,6 +42,18 @@ public final class ItemFeeDialog {
         TextField txtBorrow = moneyField(item.getBorrowFee());
         TextField txtLate = moneyField(item.getLateFeePerDay());
 
+        ToggleGroup mode = new ToggleGroup();
+        RadioButton rbDefault = new RadioButton(String.format(Locale.ROOT,
+                "Default fee  (borrowing \u20B1%.2f, late \u20B1%.2f / day)", DEFAULT_BORROW_FEE, DEFAULT_LATE_FEE));
+        RadioButton rbCustom = new RadioButton("Modified fee");
+        rbDefault.setToggleGroup(mode);
+        rbCustom.setToggleGroup(mode);
+        boolean isDefault = item.getBorrowFee() == DEFAULT_BORROW_FEE && item.getLateFeePerDay() == DEFAULT_LATE_FEE;
+        (isDefault ? rbDefault : rbCustom).setSelected(true);
+
+        txtBorrow.disableProperty().bind(rbDefault.selectedProperty());
+        txtLate.disableProperty().bind(rbDefault.selectedProperty());
+
         Label hint = new Label("Applies to requests approved from now on. Items that are already borrowed keep "
                 + "the fees they were approved with. Enter 0 for no fee.");
         hint.getStyleClass().add("field-hint-text");
@@ -45,6 +61,16 @@ public final class ItemFeeDialog {
         hint.setMinHeight(Region.USE_PREF_SIZE);
 
         Label message = DialogKit.message();
+
+        rbDefault.selectedProperty().addListener((obs, o, sel) -> {
+            if (sel) {
+                txtBorrow.setText(String.format(Locale.ROOT, "%.2f", DEFAULT_BORROW_FEE));
+                txtLate.setText(String.format(Locale.ROOT, "%.2f", DEFAULT_LATE_FEE));
+                InputRules.setInvalid(txtBorrow, false);
+                InputRules.setInvalid(txtLate, false);
+                message.setText("");
+            }
+        });
 
         Button save = new Button("Save");
         save.getStyleClass().add("btn-primary");
@@ -59,7 +85,7 @@ public final class ItemFeeDialog {
         buttons.setAlignment(Pos.CENTER_RIGHT);
 
         VBox root = DialogKit.form(440);
-        root.getChildren().addAll(title, subtitle,
+        root.getChildren().addAll(title, subtitle, rbDefault, rbCustom,
                 DialogKit.field("Borrowing fee (\u20B1)", txtBorrow),
                 DialogKit.field("Late fee per day (\u20B1)", txtLate),
                 hint, message, buttons);
@@ -71,6 +97,11 @@ public final class ItemFeeDialog {
         txtLate.textProperty().addListener((obs, o, n) -> { InputRules.setInvalid(txtLate, false); message.setText(""); });
 
         save.setOnAction(e -> {
+            if (rbDefault.isSelected()) {
+                result[0] = new double[] {DEFAULT_BORROW_FEE, DEFAULT_LATE_FEE};
+                stage.close();
+                return;
+            }
             Double borrow = parse(txtBorrow);
             Double late = parse(txtLate);
             if (borrow == null || late == null) {
@@ -93,7 +124,6 @@ public final class ItemFeeDialog {
         return result[0];
     }
 
-    /** A text field that only accepts digits with at most one dot and two decimals. */
     private static TextField moneyField(double current) {
         TextField t = DialogKit.textField("e.g. 50.00  (0 for none)");
         t.setText(String.format(Locale.ROOT, "%.2f", current));
@@ -102,7 +132,6 @@ public final class ItemFeeDialog {
         return t;
     }
 
-    /** The number in the field, or null if it is empty or not a valid amount. */
     private static Double parse(TextField field) {
         String text = field.getText() == null ? "" : field.getText().trim();
         if (text.isEmpty() || text.equals(".")) return null;

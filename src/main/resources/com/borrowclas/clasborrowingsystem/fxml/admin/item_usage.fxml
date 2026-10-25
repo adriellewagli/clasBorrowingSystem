@@ -11,6 +11,9 @@
         <Insets top="24" right="28" bottom="24" left="28"/>
     </padding>
 
+    <ComboBox fx:id="cmbPeriod" prefWidth="160" prefHeight="40"/>
+
+
     <HBox alignment="CENTER_LEFT" spacing="16">
         <VBox spacing="3" HBox.hgrow="ALWAYS">
             <Label text="Most Used Items" styleClass="page-title"/>
@@ -32,7 +35,7 @@
 
     <VBox styleClass="main-dashboard-card">
         <HBox styleClass="card-title-bar" alignment="CENTER_LEFT">
-            <Label text="Top 5 most borrowed" styleClass="section-title"/>
+            <Label fx:id="lblChartTitle" text="Top 5 most borrowed" styleClass="section-title"/>
         </HBox>
         <BarChart fx:id="chartTop" prefHeight="230" minHeight="200" animated="false" legendVisible="false">
             <xAxis><CategoryAxis fx:id="xAxis"/></xAxis>

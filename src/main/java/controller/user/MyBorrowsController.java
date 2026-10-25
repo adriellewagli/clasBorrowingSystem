@@ -64,7 +64,7 @@ public class MyBorrowsController extends BaseController {
         FilteredList<BorrowedItem> filtered = new FilteredList<>(activeBorrowsList, i -> true);
         SortedList<BorrowedItem> sorted = new SortedList<>(filtered);
         sorted.comparatorProperty().bind(tblActiveBorrows.comparatorProperty());
-        tblActiveBorrows.setItems(sorted);
+        util.TablePager.install(tblActiveBorrows, filtered, sorted);
         TableCells.bindCount(lblRowCount, filtered, activeBorrowsList);
         ActionFilter<BorrowedItem> actionFilter =
                 new ActionFilter<>(cmbActionFilter, activeBorrowsList, filtered, BorrowedItem::getStatus);

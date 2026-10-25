@@ -236,7 +236,7 @@ public class BorrowEquipmentController extends BaseController {
         catalogFiltered = new FilteredList<>(masterEquipmentList, e -> true);
         SortedList<Equipment> sorted = new SortedList<>(catalogFiltered);
         sorted.comparatorProperty().bind(tblEquipment.comparatorProperty());
-        tblEquipment.setItems(sorted);
+        util.TablePager.install(tblEquipment, catalogFiltered, sorted);
     }
 
     private static boolean isQueued(Equipment eq) {
@@ -290,8 +290,9 @@ public class BorrowEquipmentController extends BaseController {
         util.LiveRefresh.background(equipmentDAO::getAllEquipment, fresh -> {
             loading = false;
             if (fresh != null) {
-                if (!util.LiveRefresh.fingerprint(fresh).equals(util.LiveRefresh.fingerprint(masterEquipmentList))) {
-                    masterEquipmentList.setAll(fresh);
+                java.util.List<model.Equipment> visible = fresh.stream().filter(e -> !e.isDisabled()).toList();
+                if (!util.LiveRefresh.fingerprint(visible).equals(util.LiveRefresh.fingerprint(masterEquipmentList))) {
+                    masterEquipmentList.setAll(visible);
                 }
                 tblEquipment.refresh();
                 long available = masterEquipmentList.stream().filter(e -> "Available".equalsIgnoreCase(e.getStatus())).count();
@@ -381,34 +382,15 @@ public class BorrowEquipmentController extends BaseController {
         });
 
         colCartPrice.setCellFactory(col -> new TableCell<QueueRow, Void>() {
-            private final TextField field = new TextField();
-
-            {
-                field.setPromptText("0.00");
-                field.setTextFormatter(new TextFormatter<String>(c ->
-                        c.getControlNewText().matches("\\d{0,7}(\\.\\d{0,2})?") ? c : null));
-                field.textProperty().addListener((obs, o, n) -> {
-                    QueueRow row = currentRow();
-                    if (row != null && n != null && !n.equals(row.price.get())) {
-                        row.price.set(n);
-                        updateQueueSummary();
-                    }
-                });
-            }
-
-            private QueueRow currentRow() {
-                int i = getIndex();
-                if (getTableView() == null || i < 0 || i >= getTableView().getItems().size()) return null;
-                return getTableView().getItems().get(i);
-            }
-
             @Override
             protected void updateItem(Void v, boolean empty) {
                 super.updateItem(v, empty);
-                QueueRow row = empty ? null : currentRow();
-                if (row == null) { setGraphic(null); return; }
-                field.setText(row.price.get());
-                setGraphic(field);
+                int i = getIndex();
+                if (empty || getTableView() == null || i < 0 || i >= getTableView().getItems().size()) {
+                    setText(null);
+                    return;
+                }
+                setText(String.format("\u20B1%,.2f", getTableView().getItems().get(i).equipment.getBorrowFee()));
             }
         });
 
@@ -441,8 +423,7 @@ public class BorrowEquipmentController extends BaseController {
         double minLate = Double.MAX_VALUE;
         double maxLate = 0;
         for (QueueRow r : QUEUE) {
-            double p = parsePrice(r.price.get());
-            if (!Double.isNaN(p)) total += p;
+            total += r.equipment.getBorrowFee();
             minLate = Math.min(minLate, r.equipment.getLateFeePerDay());
             maxLate = Math.max(maxLate, r.equipment.getLateFeePerDay());
         }
@@ -541,13 +522,8 @@ public class BorrowEquipmentController extends BaseController {
                 lblErrorMsg.setText("Choose a return date (tomorrow or later) for '" + name + "'.");
                 return;
             }
-            double price = parsePrice(r.price.get());
-            if (Double.isNaN(price) || price < 0) {
-                lblErrorMsg.setText("Enter the price for '" + name + "' (0 or more).");
-                return;
-            }
             dueDates.putIfAbsent(r.equipment.getId(), due);
-            prices.putIfAbsent(r.equipment.getId(), price);
+            prices.putIfAbsent(r.equipment.getId(), r.equipment.getBorrowFee());
         }
 
         byte[] snapshotBytes = snapshot.getBytes();

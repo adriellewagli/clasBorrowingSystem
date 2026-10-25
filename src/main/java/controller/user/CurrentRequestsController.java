@@ -68,7 +68,7 @@ public class CurrentRequestsController extends BaseController {
         filtered = new FilteredList<>(requests, r -> true);
         SortedList<BorrowedItem> sorted = new SortedList<>(filtered);
         sorted.comparatorProperty().bind(tblRequests.comparatorProperty());
-        tblRequests.setItems(sorted);
+        util.TablePager.install(tblRequests, filtered, sorted);
         TableCells.bindCount(lblRowCount, filtered, requests);
 
         actionFilter = new ActionFilter<>(cmbActionFilter, requests, filtered, BorrowedItem::getRequestType);

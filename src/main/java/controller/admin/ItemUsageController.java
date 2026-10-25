@@ -45,6 +45,10 @@ public class ItemUsageController extends BaseController {
     @FXML private TableColumn<ItemUsage, Integer> colTimes;
     @FXML private TableColumn<ItemUsage, String> colLast;
     @FXML private TableColumn<ItemUsage, String> colStatus;
+    @FXML private ComboBox<String> cmbPeriod;
+    @FXML private Label lblChartTitle;
+
+    private volatile String periodKey = "ALL";
 
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<ItemUsage> usage = FXCollections.observableArrayList();
@@ -75,7 +79,7 @@ public class ItemUsageController extends BaseController {
         filtered = new FilteredList<>(usage, u -> true);
         SortedList<ItemUsage> sorted = new SortedList<>(filtered);
         sorted.comparatorProperty().bind(tblUsage.comparatorProperty());
-        tblUsage.setItems(sorted);
+        util.TablePager.install(tblUsage, filtered, sorted);
         TableCells.bindCount(lblRowCount, filtered, usage);
 
         // the "action" filter here narrows the ranking by category
@@ -90,6 +94,19 @@ public class ItemUsageController extends BaseController {
         chartTop.setLegendVisible(false);
         chartTop.setAnimated(false);
 
+        cmbPeriod.setItems(FXCollections.observableArrayList("Today", "This week", "This month", "This year", "All time"));
+        cmbPeriod.setValue("All time");
+        cmbPeriod.valueProperty().addListener((o, a, b) -> {
+            periodKey = switch (b == null ? "" : b) {
+                case "Today" -> "DAY";
+                case "This week" -> "WEEK";
+                case "This month" -> "MONTH";
+                case "This year" -> "YEAR";
+                default -> "ALL";
+            };
+            if (lblChartTitle != null) lblChartTitle.setText("Top 5 most borrowed \u2014 " + (b == null ? "All time" : b));
+            load();
+        });
         load();
         // borrows approved / returned while this page is open update the ranking and chart by themselves
         LiveRefresh.poll(tblUsage, usage, this::fetchUsage, this::showSummary);
@@ -106,7 +123,7 @@ public class ItemUsageController extends BaseController {
 
     /** Reads the ranking straight from the transactions table (database only - safe off the UI thread). */
     private List<ItemUsage> fetchUsage() {
-        return equipmentDAO.getMostUsedEquipment();
+        return equipmentDAO.getMostUsedEquipment(periodKey);
     }
 
     private void load() {

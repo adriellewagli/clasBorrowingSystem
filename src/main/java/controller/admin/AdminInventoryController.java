@@ -17,6 +17,9 @@ import model.Equipment;
 import util.ActionFilter;
 import util.LiveRefresh;
 import util.TableCells;
+import javafx.stage.Window;
+import model.ItemFee;
+import util.ItemFeeDialog;
 
 import java.util.List;
 
@@ -39,6 +42,10 @@ public class AdminInventoryController extends BaseController {
     @FXML private TextField txtSerial;
     @FXML private Label lblFormError;
 
+    @FXML private Button btnEditFees;
+    @FXML private Button btnToggleDisable;
+    @FXML private Button btnRemove;
+
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<Equipment> inventoryList = FXCollections.observableArrayList();
     private FilteredList<Equipment> filteredList;
@@ -51,6 +58,8 @@ public class AdminInventoryController extends BaseController {
 
         setupTableColumns();
         setupSearch();
+        tblInventory.getSelectionModel().selectedItemProperty().addListener((o, a, sel) -> updateActionButtons(sel));
+        updateActionButtons(null);
         loadInventoryData(); // runs in the background
         // statuses change when requests are approved / items come back: keep the table current
         LiveRefresh.poll(tblInventory, inventoryList, equipmentDAO::getAllEquipment, null);
@@ -77,7 +86,7 @@ public class AdminInventoryController extends BaseController {
         filteredList = new FilteredList<>(inventoryList, e -> true);
         SortedList<Equipment> sorted = new SortedList<>(filteredList);
         sorted.comparatorProperty().bind(tblInventory.comparatorProperty());
-        tblInventory.setItems(sorted);
+        util.TablePager.install(tblInventory, filteredList, sorted);
         TableCells.bindCount(lblRowCount, filteredList, inventoryList);
 
         actionFilter = new ActionFilter<>(cmbActionFilter, inventoryList, filteredList, Equipment::getStatus);
@@ -128,15 +137,17 @@ public class AdminInventoryController extends BaseController {
         }
 
         Equipment newEq = new Equipment(name, category, serial, "AVAILABLE");
-        boolean success = equipmentDAO.addEquipment(newEq);
+        int newId = equipmentDAO.addEquipmentGetId(newEq);
 
-        if (success) {
+        if (newId > 0) {
             lblFormError.setText("");
             txtName.clear();
             txtSerial.clear();
             comboCategory.getSelectionModel().clearSelection();
             loadInventoryData();
-            showSuccessDialog("Equipment Added", "The new item has been successfully saved to the inventory database.");
+            // straight to the fee screen for the new item
+            openFeeEditor(new ItemFee(newId, name, category, serial,
+                    ItemFeeDialog.DEFAULT_BORROW_FEE, ItemFeeDialog.DEFAULT_LATE_FEE), true);
         } else {
             lblFormError.setText("Error: Serial number may already exist.");
         }
@@ -145,5 +156,64 @@ public class AdminInventoryController extends BaseController {
     @FXML
     private void handleRefresh(ActionEvent event) {
         loadInventoryData();
+    }
+
+    private void updateActionButtons(Equipment sel) {
+        boolean none = sel == null;
+        btnEditFees.setDisable(none);
+        btnToggleDisable.setDisable(none);
+        btnRemove.setDisable(none);
+        btnToggleDisable.setText(!none && sel.isDisabled() ? "Enable" : "Disable");
+    }
+
+    private void openFeeEditor(ItemFee item, boolean justCreated) {
+        Window owner = tblInventory.getScene() != null ? tblInventory.getScene().getWindow() : null;
+        double[] r = ItemFeeDialog.show(owner, item);
+        if (r == null) {
+            if (justCreated) showSuccessDialog("Equipment Added",
+                    item.getEquipmentName() + " was saved with the default fees. You can change them with Edit Fees.");
+            return;
+        }
+        String error = equipmentDAO.updateItemFees(item.getEquipmentId(), r[0], r[1]);
+        if (error != null) { showErrorDialog("Could not save the fees", error); return; }
+        LiveRefresh.markChanged();
+        loadInventoryData();
+        showSuccessDialog(justCreated ? "Equipment Added" : "Fees Saved", item.getEquipmentName()
+                + String.format(" now costs \u20B1%,.2f to borrow, with a late fee of \u20B1%,.2f per day.", r[0], r[1]));
+    }
+
+    @FXML
+    private void handleEditFees(ActionEvent event) {
+        Equipment sel = tblInventory.getSelectionModel().getSelectedItem();
+        if (sel == null) return;
+        openFeeEditor(new ItemFee(sel.getId(), sel.getName(), sel.getCategory(), sel.getSerialNumber(),
+                sel.getBorrowFee(), sel.getLateFeePerDay()), false);
+    }
+
+    @FXML
+    private void handleToggleDisable(ActionEvent event) {
+        Equipment sel = tblInventory.getSelectionModel().getSelectedItem();
+        if (sel == null) return;
+        boolean disable = !sel.isDisabled();
+        String msg = disable
+                ? "Disable " + sel.getName() + "? It stays in the inventory but can't be requested or reserved until you enable it again."
+                : "Enable " + sel.getName() + "? Users will be able to request it again.";
+        if (!confirm(disable ? "Disable Item" : "Enable Item", msg, disable ? "Disable" : "Enable")) return;
+        String error = equipmentDAO.setEquipmentDisabled(sel.getId(), disable);
+        if (error != null) { showErrorDialog("Could not update the item", error); return; }
+        LiveRefresh.markChanged();
+        loadInventoryData();
+    }
+
+    @FXML
+    private void handleRemove(ActionEvent event) {
+        Equipment sel = tblInventory.getSelectionModel().getSelectedItem();
+        if (sel == null) return;
+        if (!confirm("Remove Item", "Permanently remove " + sel.getName() + " from the inventory? This can't be undone.", "Remove")) return;
+        String error = equipmentDAO.removeEquipment(sel.getId());
+        if (error != null) { showErrorDialog("Can't remove this item", error); return; }
+        LiveRefresh.markChanged();
+        loadInventoryData();
+        showSuccessDialog("Item Removed", sel.getName() + " was removed from the inventory.");
     }
 }

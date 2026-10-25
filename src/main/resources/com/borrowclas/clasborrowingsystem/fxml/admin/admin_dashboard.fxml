@@ -61,7 +61,7 @@
                         onAction="#handleViewPasswordRequests" visible="false" managed="false"/>
                 <Region VBox.vgrow="ALWAYS"/>
 
-                <Button text="Change Login Details" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleChangeCredentials"/>
+
                 <Button text="Log Out" styleClass="sidebar-btn-logout" maxWidth="Infinity" alignment="CENTER" onAction="#handleLogout"/>
             </VBox>
         </left>

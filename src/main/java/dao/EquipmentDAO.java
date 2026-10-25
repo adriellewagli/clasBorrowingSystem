@@ -15,6 +15,10 @@ import java.util.Map;
 
 public interface EquipmentDAO {
 
+    int addEquipmentGetId(Equipment equipment);
+    String removeEquipment(int equipmentId);
+    String setEquipmentDisabled(int equipmentId, boolean disabled);
+
     /**
      * Who borrowed it: the borrower's details and ID photo for one transaction. Personal data - this only
      * works while a Super Admin is logged in; for anyone else it returns null.
@@ -91,6 +95,7 @@ public interface EquipmentDAO {
     /** Periods ({start, end}) in which the item is already out, requested or reserved, from today on. */
     List<LocalDate[]> getBookedRanges(int equipmentId);
 
+
     String createReservation(
             int equipmentId,
             String borrowerName,
@@ -129,6 +134,7 @@ public interface EquipmentDAO {
     List<BorrowedItem> getPendingTransactions();
     List<BorrowedItem> getAllTransactionHistory();
     List<ItemUsage> getMostUsedEquipment();
+    List<ItemUsage> getMostUsedEquipment(String period);   // DAY, WEEK, MONTH, YEAR or ALL
 
     boolean approveBorrowRequest(int transactionId, int equipmentId, int adminUserId);
     String approveBorrow(int transactionId, int equipmentId, int adminUserId);

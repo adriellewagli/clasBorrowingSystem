@@ -111,17 +111,14 @@ public final class ReserveDialog {
         // ID snapshot - required, same as a normal borrow request
         IdSnapshotPane snapshot = new IdSnapshotPane();
 
-        // Price: the borrower fills in what the item costs. It starts empty - nothing is pre-filled.
-        TextField txtFee = DialogKit.textField("Enter the item price, e.g. 150.00");
-        txtFee.setTextFormatter(new javafx.scene.control.TextFormatter<String>(c ->
-                c.getControlNewText().matches("\\d{0,7}(\\.\\d{0,2})?") ? c : null));
-        Label lblFeeNote = new Label(item.getLateFeePerDay() > 0
-                ? String.format("Late fee: \u20B1%,.2f per day after the return date.", item.getLateFeePerDay())
-                : "");
-        lblFeeNote.setStyle("-fx-font-size: 11.5px; -fx-text-fill: #64748b;");
+        // The price is the item's own borrowing fee (set in Fees & Penalties). It can't be changed here.
+        Label lblFeeNote = new Label(String.format(
+                "Borrowing fee: \u20B1%,.2f  \u2022  Late fee: \u20B1%,.2f per day after the return date.",
+                item.getBorrowFee(), item.getLateFeePerDay()));
+        lblFeeNote.setStyle("-fx-font-size: 12.5px; -fx-text-fill: #475569; -fx-font-weight: bold;");
         lblFeeNote.setWrapText(true);
         lblFeeNote.setMinHeight(Region.USE_PREF_SIZE);
-        VBox feeBox = new VBox(6, DialogKit.field("Item Price (\u20B1)", txtFee), lblFeeNote);
+        VBox feeBox = new VBox(6, lblFeeNote);
 
         Label message = DialogKit.message();
 
@@ -176,14 +173,7 @@ public final class ReserveDialog {
                 return;
             }
 
-            String feeText = txtFee.getText() == null ? "" : txtFee.getText().trim();
-            double price;
-            try {
-                price = Double.parseDouble(feeText);
-            } catch (NumberFormatException ex) {
-                DialogKit.showMessage(message, "Please enter how much the item costs (e.g. 150.00).", false);
-                return;
-            }
+            double price = item.getBorrowFee();
 
             byte[] idSnapshot = snapshot.getBytes();
             if (idSnapshot == null) {

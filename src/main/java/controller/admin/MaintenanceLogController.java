@@ -49,7 +49,7 @@ public class MaintenanceLogController extends BaseController {
         filteredList = new FilteredList<>(maintenanceList, e -> true);
         SortedList<Equipment> sorted = new SortedList<>(filteredList);
         sorted.comparatorProperty().bind(tblMaintenance.comparatorProperty());
-        tblMaintenance.setItems(sorted);
+        util.TablePager.install(tblMaintenance, filteredList, sorted);
         TableCells.bindCount(lblRowCount, filteredList, maintenanceList);
         actionFilter = new ActionFilter<>(cmbActionFilter, maintenanceList, filteredList, Equipment::getStatus);
 

@@ -13,6 +13,10 @@ public class Equipment {
     /** What it costs to borrow this item, and the late fee per day (both set by the Super Admin). */
     private double borrowFee;
     private double lateFeePerDay = 50.00;
+    private boolean disabled;
+
+    public boolean isDisabled() { return disabled; }
+    public void setDisabled(boolean disabled) { this.disabled = disabled; }
 
     public Equipment() {}
 

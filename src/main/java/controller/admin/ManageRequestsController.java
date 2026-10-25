@@ -130,7 +130,7 @@ public class ManageRequestsController extends BaseController {
         filteredData = new FilteredList<>(pendingList, p -> true);
         SortedList<BorrowedItem> sorted = new SortedList<>(filteredData);
         sorted.comparatorProperty().bind(tblRequests.comparatorProperty());
-        tblRequests.setItems(sorted);
+        util.TablePager.install(tblRequests, filteredData, sorted);
         TableCells.bindCount(lblRowCount, filteredData, pendingList);
 
         actionFilter = new ActionFilter<>(cmbActionFilter, pendingList, filteredData, BorrowedItem::getRequestType);

@@ -22,6 +22,9 @@
             <TextField fx:id="txtSearch" promptText="Search inventory by name, category, serial, or status..." styleClass="clean-search-field" HBox.hgrow="ALWAYS"/>
             <ComboBox fx:id="cmbActionFilter" prefWidth="190" prefHeight="40"/>
             <Button text="Refresh" styleClass="btn-secondary" onAction="#handleRefresh"/>
+            <Button fx:id="btnEditFees" text="Edit Fees" styleClass="btn-secondary" onAction="#handleEditFees"/>
+            <Button fx:id="btnToggleDisable" text="Disable" styleClass="btn-secondary" onAction="#handleToggleDisable"/>
+            <Button fx:id="btnRemove" text="Remove" styleClass="btn-secondary" onAction="#handleRemove"/>
         </HBox>
 
         <VBox fx:id="tableCard" styleClass="main-dashboard-card" VBox.vgrow="ALWAYS">

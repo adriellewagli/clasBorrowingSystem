@@ -78,7 +78,7 @@ public class RequestHistoryLogController extends BaseController {
         filteredHistory = new FilteredList<>(masterHistoryList, i -> true);
         SortedList<BorrowedItem> sorted = new SortedList<>(filteredHistory);
         sorted.comparatorProperty().bind(tblRequestHistory.comparatorProperty());
-        tblRequestHistory.setItems(sorted);
+        util.TablePager.install(tblRequestHistory, filteredHistory, sorted);
         TableCells.bindCount(lblRowCount, filteredHistory, masterHistoryList);
 
         if (txtSearch != null) {

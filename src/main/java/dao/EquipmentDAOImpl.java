@@ -48,8 +48,73 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     "JOIN equipment e ON t.equipment_id = e.equipment_id " +
                     "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
                     "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id ";
-
+    private static Double borrowFeeOf(Connection conn, int equipmentId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT borrow_fee FROM equipment WHERE equipment_id = ?")) {
+            ps.setInt(1, equipmentId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getDouble(1) : 0.0;
+            }
+        }
+    }
     // ================================================================== equipment
+
+    @Override
+    public int addEquipmentGetId(Equipment equipment) {
+        String sql = "INSERT INTO equipment (item_name, category, serial_number, status) VALUES (?, ?, ?, 'AVAILABLE')";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setString(1, equipment.getName());
+            stmt.setString(2, equipment.getCategory());
+            stmt.setString(3, equipment.getSerialNumber());
+            if (stmt.executeUpdate() > 0) {
+                try (ResultSet k = stmt.getGeneratedKeys()) {
+                    if (k.next()) return k.getInt(1);
+                }
+            }
+            return -1;
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to add equipment: " + e.getMessage());
+            return -1;
+        }
+    }
+
+    @Override
+    public String removeEquipment(int equipmentId) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT COUNT(*) FROM transactions WHERE equipment_id = ?")) {
+                ps.setInt(1, equipmentId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next() && rs.getInt(1) > 0) {
+                        return "This item has transactions on record (active or past), so it can't be removed. Disable it instead.";
+                    }
+                }
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM equipment WHERE equipment_id = ? " +
+                            "AND NOT EXISTS (SELECT 1 FROM transactions WHERE equipment_id = ?)")) {
+                ps.setInt(1, equipmentId);
+                ps.setInt(2, equipmentId);
+                return ps.executeUpdate() > 0 ? null : "That item no longer exists or just got a transaction. Refresh the list.";
+            }
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to remove equipment: " + e.getMessage());
+            return "Database error: could not remove the item.";
+        }
+    }
+
+    @Override
+    public String setEquipmentDisabled(int equipmentId, boolean disabled) {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement("UPDATE equipment SET is_disabled = ? WHERE equipment_id = ?")) {
+            ps.setBoolean(1, disabled);
+            ps.setInt(2, equipmentId);
+            return ps.executeUpdate() > 0 ? null : "That item no longer exists. Refresh the list.";
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to update disabled flag: " + e.getMessage());
+            return "Database error: could not update the item.";
+        }
+    }
 
     @Override
     public boolean addEquipment(Equipment equipment) {
@@ -302,7 +367,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     stmtInsert.setString(7, borrowerIdNumber);
                     stmtInsert.setString(8, programOrDept);
                     stmtInsert.setDouble(9, LATE_PENALTY_PER_DAY);
-                    stmtInsert.setDouble(10, price == null ? 0.0 : price);
+                    stmtInsert.setDouble(10, borrowFeeOf(conn, eqId));
 
                     if (idSnapshotBytes != null && idSnapshotBytes.length > 0) {
                         stmtInsert.setBytes(11, idSnapshotBytes);
@@ -453,7 +518,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 ps.setString(8, borrowerIdNumber);
                 ps.setString(9, programOrDept);
                 ps.setDouble(10, lateRate);
-                ps.setDouble(11, totalFee);
+                ps.setDouble(11, borrowFeeOf(conn, equipmentId));
                 ps.setBytes(12, idSnapshotBytes);
                 ps.executeUpdate();
             }
@@ -696,12 +761,29 @@ public class EquipmentDAOImpl implements EquipmentDAO {
 
     @Override
     public List<ItemUsage> getMostUsedEquipment() {
+        return getMostUsedEquipment("ALL");
+    }
+
+    private static String periodClause(String period) {
+        String p = period == null ? "" : period.toUpperCase(Locale.ROOT);
+        return switch (p) {
+            case "DAY" -> "   AND DATE(t.date_borrowed) = CURDATE() ";
+            case "WEEK" -> "   AND YEARWEEK(t.date_borrowed, 1) = YEARWEEK(CURDATE(), 1) ";
+            case "MONTH" -> "   AND YEAR(t.date_borrowed) = YEAR(CURDATE()) AND MONTH(t.date_borrowed) = MONTH(CURDATE()) ";
+            case "YEAR" -> "   AND YEAR(t.date_borrowed) = YEAR(CURDATE()) ";
+            default -> "";
+        };
+    }
+
+    @Override
+    public List<ItemUsage> getMostUsedEquipment(String period) {
         List<ItemUsage> list = new ArrayList<>();
         String sql = "SELECT e.equipment_id, e.item_name, e.category, e.serial_number, e.status, " +
                 "COUNT(t.transaction_id) AS times_borrowed, MAX(t.date_borrowed) AS last_borrowed " +
                 "FROM equipment e " +
                 "LEFT JOIN transactions t ON t.equipment_id = e.equipment_id " +
                 "   AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN', 'RETURNED') " +
+                periodClause(period) +
                 "GROUP BY e.equipment_id, e.item_name, e.category, e.serial_number, e.status " +
                 "ORDER BY times_borrowed DESC, last_borrowed DESC, e.item_name ASC";
 

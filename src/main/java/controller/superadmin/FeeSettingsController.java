@@ -73,7 +73,7 @@ public class FeeSettingsController extends BaseController {
         filtered = new FilteredList<>(fees, f -> true);
         SortedList<ItemFee> sorted = new SortedList<>(filtered);
         sorted.comparatorProperty().bind(tblFees.comparatorProperty());
-        tblFees.setItems(sorted);
+        util.TablePager.install(tblFees, filtered, sorted);
         TableCells.bindCount(lblRowCount, filtered, fees);
 
         txtSearch.textProperty().addListener((obs, o, n) -> filtered.setPredicate(f -> {
