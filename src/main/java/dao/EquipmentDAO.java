@@ -15,10 +15,6 @@ import java.util.Map;
 
 public interface EquipmentDAO {
 
-    int addEquipmentGetId(Equipment equipment);
-    String removeEquipment(int equipmentId);
-    String setEquipmentDisabled(int equipmentId, boolean disabled);
-
     /**
      * Who borrowed it: the borrower's details and ID photo for one transaction. Personal data - this only
      * works while a Super Admin is logged in; for anyone else it returns null.
@@ -29,6 +25,9 @@ public interface EquipmentDAO {
     double LATE_PENALTY_PER_DAY = 50.00;
 
     boolean addEquipment(Equipment equipment);
+    int addEquipmentGetId(Equipment equipment);              // new id, or -1 if it failed
+    String removeEquipment(int equipmentId);                 // null = ok, else the error text
+    String setEquipmentDisabled(int equipmentId, boolean disabled);
     List<Equipment> getAllEquipment();
     List<Equipment> getEquipmentByStatus(String status);
     boolean updateStatus(int equipmentId, String newStatus);
@@ -94,7 +93,6 @@ public interface EquipmentDAO {
 
     /** Periods ({start, end}) in which the item is already out, requested or reserved, from today on. */
     List<LocalDate[]> getBookedRanges(int equipmentId);
-
 
     String createReservation(
             int equipmentId,

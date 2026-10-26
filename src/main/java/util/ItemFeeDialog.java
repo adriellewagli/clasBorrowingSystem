@@ -21,7 +21,7 @@ import java.util.Locale;
 public final class ItemFeeDialog {
 
     private static final double MAX_FEE = 100_000;
-    public static final double DEFAULT_BORROW_FEE = 0.00;
+    public static final double DEFAULT_BORROW_FEE = 20.00;
     public static final double DEFAULT_LATE_FEE = 50.00;
 
     private ItemFeeDialog() {}

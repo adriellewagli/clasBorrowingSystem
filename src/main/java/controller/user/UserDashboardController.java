@@ -24,7 +24,7 @@ public class UserDashboardController extends BaseController {
     @FXML private Label lblUserRole;
     @FXML private Button btnNavCatalog;
     @FXML private Button btnNavMyBorrows;
-    @FXML private Button btnNavMyRequests;
+    @FXML private Button btnNavEquipCatalog;
     @FXML private Button btnNavSettings;
 
     // --- Center content (each tab is loaded into this) ---
@@ -83,8 +83,8 @@ public class UserDashboardController extends BaseController {
     }
 
     @FXML
-    private void handleViewMyRequests(ActionEvent event) {
-        openView("user/current_requests.fxml", btnNavMyRequests);
+    private void handleViewEquipCatalog(ActionEvent event) {
+        openView("user/equipment_catalog.fxml", btnNavEquipCatalog);
     }
 
     @FXML
@@ -136,7 +136,7 @@ public class UserDashboardController extends BaseController {
 
     private void updateActiveSidebarButton(Button activeButton) {
         currentActiveButton = activeButton;
-        Button[] buttons = {btnNavCatalog, btnNavMyBorrows, btnNavMyRequests, btnNavSettings};
+        Button[] buttons = {btnNavCatalog, btnNavMyBorrows, btnNavEquipCatalog, btnNavSettings};
         for (Button btn : buttons) {
             if (btn != null) {
                 btn.getStyleClass().remove("sidebar-btn-active");

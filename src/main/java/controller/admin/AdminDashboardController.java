@@ -85,6 +85,8 @@ public class AdminDashboardController extends BaseController {
     @FXML private TextArea txtDamageReport;
     @FXML private Label lblModalError;
 
+    @FXML private Button btnNavEquipCatalog;
+
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<BorrowedItem> transactionList = FXCollections.observableArrayList();
     private FilteredList<BorrowedItem> filteredList;
@@ -129,6 +131,12 @@ public class AdminDashboardController extends BaseController {
         setupRequestBadge();
 
         returnsWatcher = LiveRefresh.watch(tblTransactions, LiveRefresh.DEFAULT_SECONDS, false, this::refreshReturnsInBackground);
+    }
+
+    @FXML
+    private void handleViewEquipCatalog(ActionEvent event) {
+        if (isNavigating || currentActiveButton == btnNavEquipCatalog) return;
+        loadViewIntoCenter("/com/borrowclas/clasborrowingsystem/fxml/user/equipment_catalog.fxml", btnNavEquipCatalog);
     }
 
     private void setupRequestBadge() {
@@ -473,8 +481,8 @@ public class AdminDashboardController extends BaseController {
         currentActiveButton = activeButton;
         Button[] buttons = {
                 btnNavReturns, btnNavRequests, btnNavCatalog,
-                btnNavInventory, btnNavMaintenance, btnNavHistory, btnNavUsage,
-                btnNavAccounts, btnNavFees, btnNavPasswordRequests // <-- Add btnNavPasswordRequests here
+                btnNavInventory, btnNavMaintenance, btnNavHistory, btnNavUsage, btnNavEquipCatalog,
+                btnNavAccounts, btnNavFees, btnNavPasswordRequests
         };
         for (Button btn : buttons) {
             if (btn != null) {

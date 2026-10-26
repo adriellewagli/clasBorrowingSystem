@@ -113,7 +113,7 @@ public final class ReserveDialog {
 
         // The price is the item's own borrowing fee (set in Fees & Penalties). It can't be changed here.
         Label lblFeeNote = new Label(String.format(
-                "Borrowing fee: \u20B1%,.2f  \u2022  Late fee: \u20B1%,.2f per day after the return date.",
+                "Borrowing fee: \u20B1%,.2f per day  \u2022  Late fee: \u20B1%,.2f per day after the return date.",
                 item.getBorrowFee(), item.getLateFeePerDay()));
         lblFeeNote.setStyle("-fx-font-size: 12.5px; -fx-text-fill: #475569; -fx-font-weight: bold;");
         lblFeeNote.setWrapText(true);

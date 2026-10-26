@@ -37,8 +37,7 @@
         <HBox styleClass="card-title-bar" alignment="CENTER_LEFT">
             <Label fx:id="lblChartTitle" text="Top 5 most borrowed" styleClass="section-title"/>
         </HBox>
-        <BarChart fx:id="chartTop" prefHeight="230" minHeight="200" animated="false" legendVisible="false">
-            <xAxis><CategoryAxis fx:id="xAxis"/></xAxis>
+        <BarChart fx:id="chartTop" prefWidth="100" minWidth="0" maxWidth="Infinity" prefHeight="240" minHeight="240" maxHeight="240" animated="false" legendVisible="false" categoryGap="24">            <xAxis><CategoryAxis fx:id="xAxis"/></xAxis>
             <yAxis><NumberAxis fx:id="yAxis" side="LEFT"/></yAxis>
         </BarChart>
     </VBox>

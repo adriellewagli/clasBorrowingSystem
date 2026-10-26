@@ -33,6 +33,8 @@ public class ItemUsageController extends BaseController {
     @FXML private CategoryAxis xAxis;
     @FXML private NumberAxis yAxis;
 
+    @FXML private ComboBox<String> cmbPeriod;
+    @FXML private Label lblChartTitle;
     @FXML private TextField txtSearch;
     @FXML private ComboBox<String> cmbActionFilter;
     @FXML private VBox tableCard;
@@ -45,15 +47,12 @@ public class ItemUsageController extends BaseController {
     @FXML private TableColumn<ItemUsage, Integer> colTimes;
     @FXML private TableColumn<ItemUsage, String> colLast;
     @FXML private TableColumn<ItemUsage, String> colStatus;
-    @FXML private ComboBox<String> cmbPeriod;
-    @FXML private Label lblChartTitle;
-
-    private volatile String periodKey = "ALL";
 
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<ItemUsage> usage = FXCollections.observableArrayList();
     private FilteredList<ItemUsage> filtered;
     private ActionFilter<ItemUsage> categoryFilter;
+    private volatile String periodKey = "ALL";
 
     @FXML
     public void initialize() {
@@ -93,6 +92,8 @@ public class ItemUsageController extends BaseController {
 
         chartTop.setLegendVisible(false);
         chartTop.setAnimated(false);
+        xAxis.setTickLabelRotation(0);
+        xAxis.setAnimated(false);
 
         cmbPeriod.setItems(FXCollections.observableArrayList("Today", "This week", "This month", "This year", "All time"));
         cmbPeriod.setValue("All time");
@@ -107,6 +108,7 @@ public class ItemUsageController extends BaseController {
             if (lblChartTitle != null) lblChartTitle.setText("Top 5 most borrowed \u2014 " + (b == null ? "All time" : b));
             load();
         });
+
         load();
         // borrows approved / returned while this page is open update the ranking and chart by themselves
         LiveRefresh.poll(tblUsage, usage, this::fetchUsage, this::showSummary);
@@ -114,6 +116,11 @@ public class ItemUsageController extends BaseController {
 
     private static boolean has(String v, String q) {
         return v != null && v.toLowerCase().contains(q);
+    }
+
+    private static String shorten(String s) {
+        if (s == null) return "";
+        return s.length() > 16 ? s.substring(0, 15) + "\u2026" : s;
     }
 
     @FXML
@@ -146,10 +153,10 @@ public class ItemUsageController extends BaseController {
         for (ItemUsage u : usage) {
             if (u.getTimesBorrowed() <= 0 || labels.size() >= 5) break;
             // two items can share a name (e.g. three "Dell Laptop"); the chart needs unique labels
-            String label = u.getEquipmentName();
+            String label = shorten(u.getEquipmentName());
             if (labels.contains(label)) label = label + " (" + u.getSerialNumber() + ")";
             int n = 2;
-            while (labels.contains(label)) label = u.getEquipmentName() + " #" + n++;
+            while (labels.contains(label)) label = shorten(u.getEquipmentName()) + " #" + n++;
             labels.add(label);
             series.getData().add(new XYChart.Data<>(label, u.getTimesBorrowed()));
             max = Math.max(max, u.getTimesBorrowed());

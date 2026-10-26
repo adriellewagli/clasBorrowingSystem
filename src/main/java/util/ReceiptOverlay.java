@@ -128,7 +128,11 @@ public class ReceiptOverlay extends StackPane {
 
         section("CHARGES");
         g = grid(true);
-        row(g, "Borrowing fee", money(r.borrowingFee()), true);
+        long rentalDays = (r.dateBorrowed() != null && r.dueDate() != null)
+                ? Math.max(1, java.time.temporal.ChronoUnit.DAYS.between(r.dateBorrowed(), r.dueDate()))
+                : 1;
+        row(g, "Borrowing fee (" + rentalDays + (rentalDays == 1 ? " day" : " days")
+                + " x " + money(r.borrowingFee() / rentalDays) + ")", money(r.borrowingFee()), true);
         if (r.lateDays() > 0) {
             row(g, "Late penalty (" + r.lateDays() + (r.lateDays() == 1 ? " day" : " days")
                     + " x " + money(r.latePenaltyPerDay()) + ")", money(r.lateFee()), true);

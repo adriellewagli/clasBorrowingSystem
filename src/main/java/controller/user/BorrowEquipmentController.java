@@ -8,7 +8,6 @@ import dao.EquipmentDAOImpl;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -25,10 +24,6 @@ import model.BorrowedItem;
 import model.Equipment;
 import model.Receipt;
 import model.UserSession;
-import util.IdSnapshotPane;
-import util.InputRules;
-import util.NameValidator;
-import util.Programs;
 import util.ReserveDialog;
 import util.TableCells;
 
@@ -42,18 +37,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The one "Borrow Equipment" screen: pick equipment from the list, set each item's return date and price,
- * fill in the borrower's details and submit - or use Reserve to hold an item for a later date.
+ * The "Borrow Equipment" screen: pick equipment, set each item's return date, then press Checkout to
+ * enter the borrower's details - or use Reserve to hold an item for a later date.
  */
 public class BorrowEquipmentController extends BaseController {
 
     private static final int DEFAULT_DAYS = 3;
 
-    /** One selected item with its own return date and price. */
+    /** One selected item with its own return date. */
     public static final class QueueRow {
         final Equipment equipment;
         final ObjectProperty<LocalDate> returnDate = new SimpleObjectProperty<>();
-        final StringProperty price = new SimpleStringProperty("");
         /** Latest return date that doesn't run into someone's reservation; null = no limit. */
         final LocalDate lastReturn;
 
@@ -95,21 +89,6 @@ public class BorrowEquipmentController extends BaseController {
     @FXML private Label lblCalculatedFee;
     @FXML private Label lblLatePenalty;
 
-    // --- borrower ---
-    @FXML private RadioButton radioStudent;
-    @FXML private RadioButton radioFaculty;
-    @FXML private TextField txtBorrowerName;
-    @FXML private VBox boxStudentFields;
-    @FXML private TextField txtStudentId;
-    @FXML private Label lblStudentIdError;
-    @FXML private ComboBox<String> txtCourse;
-    @FXML private VBox boxFacultyFields;
-    @FXML private TextField txtEmployeeId;
-    @FXML private ComboBox<String> txtDepartment;
-    @FXML private IdSnapshotPane snapshot;
-    @FXML private CheckBox chkCompliance;
-    @FXML private Label lblErrorMsg;
-
     private final EquipmentDAO equipmentDAO = new EquipmentDAOImpl();
     private final ObservableList<Equipment> masterEquipmentList = FXCollections.observableArrayList();
     private FilteredList<Equipment> catalogFiltered;
@@ -122,10 +101,6 @@ public class BorrowEquipmentController extends BaseController {
 
     @FXML
     public void initialize() {
-        NameValidator.restrict(txtBorrowerName);
-        txtCourse.setItems(FXCollections.observableArrayList(Programs.CLAS));
-        txtDepartment.setItems(FXCollections.observableArrayList(Programs.CLAS));
-        InputRules.bindStudentNumber(txtStudentId, lblStudentIdError, () -> radioStudent.isSelected());
 
         setupEquipmentTable();
         setupQueueTable();
@@ -143,7 +118,6 @@ public class BorrowEquipmentController extends BaseController {
         tblCart.sceneProperty().addListener((obs, oldScene, newScene) -> {
             if (newScene == null) { // the screen was closed
                 QUEUE.removeListener(queueListener);
-                snapshot.close();
             }
         });
 
@@ -151,7 +125,15 @@ public class BorrowEquipmentController extends BaseController {
         loadEquipment();
         util.LiveRefresh.watch(tblEquipment, 5, true, this::loadEquipment);
     }
+    private static long daysFor(QueueRow r) {
+        LocalDate due = r.returnDate.get();
+        if (due == null) return 1;
+        return Math.max(1, java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), due));
+    }
 
+    private static double feeFor(QueueRow r) {
+        return r.equipment.getBorrowFee() * daysFor(r);
+    }
     // ------------------------------------------------------------ equipment list
 
     private void setupEquipmentTable() {
@@ -280,7 +262,7 @@ public class BorrowEquipmentController extends BaseController {
             showSuccessDialog("Reservation Submitted",
                     "'" + item.getName() + "' is reserved for the dates you chose. "
                             + "An admin approves it (hands it over) on the pick-up day. "
-                            + "You can see or cancel it under My Requests.");
+                            + "Ask an admin if you need to change or cancel it.");
         }
     }
 
@@ -290,7 +272,7 @@ public class BorrowEquipmentController extends BaseController {
         util.LiveRefresh.background(equipmentDAO::getAllEquipment, fresh -> {
             loading = false;
             if (fresh != null) {
-                java.util.List<model.Equipment> visible = fresh.stream().filter(e -> !e.isDisabled()).toList();
+                java.util.List<Equipment> visible = fresh.stream().filter(e -> !e.isDisabled()).toList();
                 if (!util.LiveRefresh.fingerprint(visible).equals(util.LiveRefresh.fingerprint(masterEquipmentList))) {
                     masterEquipmentList.setAll(visible);
                 }
@@ -336,7 +318,7 @@ public class BorrowEquipmentController extends BaseController {
         active.getStyleClass().add("filter-chip-active");
     }
 
-    // ------------------------------------------------------------ queue (per-item return date + price)
+    // ------------------------------------------------------------ queue (per-item return date + fee)
 
     private void setupQueueTable() {
         colCartName.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().equipment.getName()));
@@ -361,6 +343,8 @@ public class BorrowEquipmentController extends BaseController {
                     QueueRow row = currentRow();
                     if (row != null && n != null && !n.equals(row.returnDate.get())) {
                         row.returnDate.set(n);
+                        updateQueueSummary();
+                        javafx.application.Platform.runLater(tblCart::refresh);
                     }
                 });
             }
@@ -381,6 +365,7 @@ public class BorrowEquipmentController extends BaseController {
             }
         });
 
+        // the borrowing fee is the item's own fee from Fees & Penalties - read-only here
         colCartPrice.setCellFactory(col -> new TableCell<QueueRow, Void>() {
             @Override
             protected void updateItem(Void v, boolean empty) {
@@ -390,7 +375,9 @@ public class BorrowEquipmentController extends BaseController {
                     setText(null);
                     return;
                 }
-                setText(String.format("\u20B1%,.2f", getTableView().getItems().get(i).equipment.getBorrowFee()));
+                QueueRow row = getTableView().getItems().get(i);
+                setText(String.format("\u20B1%,.2f  (%d day%s \u00D7 \u20B1%,.2f)", feeFor(row), daysFor(row),
+                        daysFor(row) == 1 ? "" : "s", row.equipment.getBorrowFee()));
             }
         });
 
@@ -407,34 +394,19 @@ public class BorrowEquipmentController extends BaseController {
         if (row != null) QUEUE.remove(row);
     }
 
-    private static double parsePrice(String text) {
-        try {
-            return (text == null || text.isBlank()) ? Double.NaN : Double.parseDouble(text.trim());
-        } catch (NumberFormatException e) {
-            return Double.NaN;
-        }
-    }
-
     private void updateQueueSummary() {
         int count = QUEUE.size();
         lblQueueCount.setText(count + (count == 1 ? " Item" : " Items"));
 
         double total = 0;
-        double minLate = Double.MAX_VALUE;
-        double maxLate = 0;
+        double latePerDay = 0;
         for (QueueRow r : QUEUE) {
-            total += r.equipment.getBorrowFee();
-            minLate = Math.min(minLate, r.equipment.getLateFeePerDay());
-            maxLate = Math.max(maxLate, r.equipment.getLateFeePerDay());
+            total += feeFor(r);
+            latePerDay += r.equipment.getLateFeePerDay();
         }
         lblCalculatedFee.setText(String.format("\u20B1%,.2f", total));
-        if (count == 0) {
-            lblLatePenalty.setText("\u2014");
-        } else if (minLate == maxLate) {
-            lblLatePenalty.setText(String.format("\u20B1%,.2f per day per item", maxLate));
-        } else {
-            lblLatePenalty.setText(String.format("\u20B1%,.2f to \u20B1%,.2f per day per item", minLate, maxLate));
-        }
+        lblLatePenalty.setText(count == 0 ? "\u2014"
+                : String.format("\u20B1%,.2f per day late (days late \u00D7 rate, as on the receipt)", latePerDay));
     }
 
     private void setAllReturnDates(int days) {
@@ -442,6 +414,7 @@ public class BorrowEquipmentController extends BaseController {
         for (QueueRow r : QUEUE) {
             r.returnDate.set(r.lastReturn != null && d.isAfter(r.lastReturn) ? r.lastReturn : d);
         }
+        updateQueueSummary();
         tblCart.refresh();
     }
 
@@ -454,94 +427,35 @@ public class BorrowEquipmentController extends BaseController {
         QUEUE.clear();
     }
 
-    // ------------------------------------------------------------ borrower form
+    // ------------------------------------------------------------ checkout
 
     @FXML
-    private void handleProfileTypeChange() {
-        boolean isStudent = radioStudent.isSelected();
-        boxStudentFields.setVisible(isStudent);
-        boxStudentFields.setManaged(isStudent);
-        boxFacultyFields.setVisible(!isStudent);
-        boxFacultyFields.setManaged(!isStudent);
-    }
-
-    private void clearFormInputs() {
-        txtBorrowerName.clear();
-        txtStudentId.clear();
-        InputRules.flagStudentNumber(txtStudentId, lblStudentIdError, false);
-        txtEmployeeId.clear();
-        txtCourse.getSelectionModel().clearSelection();
-        txtDepartment.getSelectionModel().clearSelection();
-        chkCompliance.setSelected(false);
-        snapshot.reset();
-    }
-
-    // ------------------------------------------------------------ submit
-
-    @FXML
-    private void handleConfirmCommit(ActionEvent event) {
+    private void handleCheckout(ActionEvent event) {
         if (submitting) return;
         if (QUEUE.isEmpty()) {
-            lblErrorMsg.setText("Your queue is empty. Click + Add on an available item first.");
-            return;
-        }
-
-        String borrowerName = txtBorrowerName.getText().trim().replaceAll("\\s+", " ");
-        String nameError = NameValidator.validate(borrowerName);
-        if (nameError != null) {
-            lblErrorMsg.setText(nameError);
-            return;
-        }
-
-        boolean isStudent = radioStudent.isSelected();
-        String borrowerType = isStudent ? "STUDENT" : "FACULTY";
-        String borrowerId = isStudent ? txtStudentId.getText().trim() : txtEmployeeId.getText().trim();
-        String dept = isStudent
-                ? (txtCourse.getValue() != null ? txtCourse.getValue() : "")
-                : (txtDepartment.getValue() != null ? txtDepartment.getValue() : "");
-
-        if (borrowerId.isEmpty() || dept.isEmpty()) {
-            if (isStudent && borrowerId.isEmpty()) InputRules.flagStudentNumber(txtStudentId, lblStudentIdError, true);
-            lblErrorMsg.setText("Please complete ID number and Program/Department fields.");
-            return;
-        }
-        if (isStudent && !InputRules.isValidStudentNumber(borrowerId)) {
-            InputRules.flagStudentNumber(txtStudentId, lblStudentIdError, true);
-            txtStudentId.requestFocus();
-            lblErrorMsg.setText(InputRules.STUDENT_NO_ERROR);
+            showErrorDialog("Queue is empty", "Click + Add on an available item first.");
             return;
         }
 
         LocalDate earliest = LocalDate.now().plusDays(1);
         Map<Integer, LocalDate> dueDates = new LinkedHashMap<>();
         Map<Integer, Double> prices = new LinkedHashMap<>();
+        double total = 0;
         for (QueueRow r : QUEUE) {
-            String name = r.equipment.getName();
             LocalDate due = r.returnDate.get();
             if (due == null || due.isBefore(earliest)) {
-                lblErrorMsg.setText("Choose a return date (tomorrow or later) for '" + name + "'.");
+                showErrorDialog("Return date needed",
+                        "Choose a return date (tomorrow or later) for '" + r.equipment.getName() + "'.");
                 return;
             }
             dueDates.putIfAbsent(r.equipment.getId(), due);
-            prices.putIfAbsent(r.equipment.getId(), r.equipment.getBorrowFee());
-        }
-
-        byte[] snapshotBytes = snapshot.getBytes();
-        if (snapshotBytes == null) {
-            lblErrorMsg.setText("ID Verification required: Please capture an ID photo.");
-            return;
-        }
-        if (!chkCompliance.isSelected()) {
-            lblErrorMsg.setText("You must accept responsibility compliance terms.");
-            return;
+            prices.putIfAbsent(r.equipment.getId(), feeFor(r));
+            total += feeFor(r);
         }
 
         javafx.stage.Window owner = tblCart.getScene() != null ? tblCart.getScene().getWindow() : null;
-        boolean confirmed = controller.dialog.ConfirmDialogController.show(
-                "Confirm Borrow Request",
-                "Are you sure you want to submit this borrowing request for " + dueDates.size() + " item(s)?",
-                owner);
-        if (!confirmed) return;
+        util.CheckoutDialog.Result form = util.CheckoutDialog.show(owner, QUEUE.size(), total);
+        if (form == null) return;
 
         UserSession session = UserSession.getInstance();
         int activeUserId = (session != null && session.getUserId() > 0) ? session.getUserId() : 1;
@@ -556,8 +470,8 @@ public class BorrowEquipmentController extends BaseController {
         List<Receipt> generatedReceipts = new ArrayList<>();
 
         try {
-            error = equipmentDAO.submitBatchBorrowRequest(eqIds, dueDates, prices, borrowerName, borrowerType,
-                    borrowerId, dept, activeUserId, snapshotBytes);
+            error = equipmentDAO.submitBatchBorrowRequest(eqIds, dueDates, prices, form.name(), form.type(),
+                    form.idNumber(), form.program(), activeUserId, form.idSnapshot());
 
             if (error == null) {
                 for (BorrowedItem item : equipmentDAO.getPendingRequestsForUser(activeUserId)) {
@@ -576,13 +490,11 @@ public class BorrowEquipmentController extends BaseController {
         }
 
         if (error != null) {
-            lblErrorMsg.setText(error);
+            showErrorDialog("Could not submit the request", error);
             return;
         }
 
         QUEUE.clear();
-        clearFormInputs();
-        lblErrorMsg.setText("");
         loadEquipment();
 
         javafx.stage.Window win = tblCart.getScene() != null ? tblCart.getScene().getWindow() : null;

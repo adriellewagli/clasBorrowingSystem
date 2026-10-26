@@ -48,19 +48,30 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     "JOIN equipment e ON t.equipment_id = e.equipment_id " +
                     "LEFT JOIN users u_req ON t.requested_by = u_req.user_id " +
                     "LEFT JOIN users u_proc ON t.processed_by = u_proc.user_id ";
-    private static Double borrowFeeOf(Connection conn, int equipmentId) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement("SELECT borrow_fee FROM equipment WHERE equipment_id = ?")) {
-            ps.setInt(1, equipmentId);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getDouble(1) : 0.0;
-            }
-        }
-    }
+
     // ================================================================== equipment
 
     @Override
+    public boolean addEquipment(Equipment equipment) {
+        String sql = "INSERT INTO equipment (item_name, category, serial_number, status, borrow_fee, late_fee_per_day) VALUES (?, ?, ?, 'AVAILABLE', 20, 50)";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, equipment.getName());
+            stmt.setString(2, equipment.getCategory());
+            stmt.setString(3, equipment.getSerialNumber());
+
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            System.err.println("[EquipmentDAOImpl Error] Failed to add equipment: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
     public int addEquipmentGetId(Equipment equipment) {
-        String sql = "INSERT INTO equipment (item_name, category, serial_number, status) VALUES (?, ?, ?, 'AVAILABLE')";
+        String sql = "INSERT INTO equipment (item_name, category, serial_number, status, borrow_fee, late_fee_per_day) VALUES (?, ?, ?, 'AVAILABLE', 20, 50)";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, equipment.getName());
@@ -116,21 +127,23 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         }
     }
 
-    @Override
-    public boolean addEquipment(Equipment equipment) {
-        String sql = "INSERT INTO equipment (item_name, category, serial_number, status) VALUES (?, ?, ?, 'AVAILABLE')";
+    /** The item's borrowing fee per day (set in Fees & Penalties). */
+    private static double borrowFeeOf(Connection conn, int equipmentId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT borrow_fee FROM equipment WHERE equipment_id = ?")) {
+            ps.setInt(1, equipmentId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getDouble(1) : 0.0;
+            }
+        }
+    }
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, equipment.getName());
-            stmt.setString(2, equipment.getCategory());
-            stmt.setString(3, equipment.getSerialNumber());
-
-            return stmt.executeUpdate() > 0;
-        } catch (SQLException e) {
-            System.err.println("[EquipmentDAOImpl Error] Failed to add equipment: " + e.getMessage());
-            return false;
+    /** The item's late fee per day (set in Fees & Penalties). */
+    private static double lateFeeOf(Connection conn, int equipmentId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT late_fee_per_day FROM equipment WHERE equipment_id = ?")) {
+            ps.setInt(1, equipmentId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getDouble(1) : LATE_PENALTY_PER_DAY;
+            }
         }
     }
 
@@ -139,12 +152,13 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         List<Equipment> list = new ArrayList<>();
 
         String sql = "SELECT e.equipment_id AS id, e.item_name AS name, e.category, e.serial_number, " +
-                "e.borrow_fee, e.late_fee_per_day, " +
+                "e.borrow_fee, e.late_fee_per_day, e.is_disabled, " +
                 "CASE " +
                 "   WHEN EXISTS (SELECT 1 FROM transactions t WHERE t.equipment_id = e.equipment_id " +
                 "                AND UPPER(t.status) IN ('BORROWED', 'ACTIVE', 'APPROVED', 'PENDING RETURN')) THEN 'Checked Out' " +
                 "   WHEN EXISTS (SELECT 1 FROM transactions t WHERE t.equipment_id = e.equipment_id " +
                 "                AND UPPER(t.status) = 'PENDING') THEN 'Pending Approval' " +
+                "   WHEN e.is_disabled = 1 THEN 'Disabled' " +
                 "   WHEN UPPER(e.status) IN ('MAINTENANCE', 'REPAIR', 'IN MAINTENANCE') THEN 'In Maintenance' " +
                 "   ELSE 'Available' " +
                 "END AS display_status " +
@@ -165,6 +179,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 );
                 eq.setBorrowFee(rs.getDouble("borrow_fee"));
                 eq.setLateFeePerDay(rs.getDouble("late_fee_per_day"));
+                eq.setDisabled(rs.getBoolean("is_disabled"));
                 list.add(eq);
             }
         } catch (SQLException e) {
@@ -313,14 +328,20 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             for (int eqId : ids) {
                 String name;
                 String eqStatus;
+                boolean disabled;
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "SELECT item_name, status FROM equipment WHERE equipment_id = ? FOR UPDATE")) {
+                        "SELECT item_name, status, is_disabled FROM equipment WHERE equipment_id = ? FOR UPDATE")) {
                     ps.setInt(1, eqId);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (!rs.next()) { conn.rollback(); return "An item in your queue no longer exists."; }
                         name = rs.getString("item_name");
                         eqStatus = upper(rs.getString("status"));
+                        disabled = rs.getBoolean("is_disabled");
                     }
+                }
+                if (disabled) {
+                    conn.rollback();
+                    return "'" + name + "' has been disabled and can't be requested.";
                 }
                 if (eqStatus.equals("MAINTENANCE") || eqStatus.equals("IN MAINTENANCE") || eqStatus.equals("REPAIR")) {
                     conn.rollback();
@@ -357,7 +378,6 @@ public class EquipmentDAOImpl implements EquipmentDAO {
             try (PreparedStatement stmtInsert = conn.prepareStatement(insertSql)) {
                 for (int eqId : ids) {
                     LocalDate due = returnDates.get(eqId);
-                    Double price = prices == null ? null : prices.get(eqId);
                     stmtInsert.setInt(1, eqId);
                     stmtInsert.setInt(2, validUserId);
                     stmtInsert.setString(3, borrowerName);
@@ -366,8 +386,9 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                     stmtInsert.setString(6, borrowerType);
                     stmtInsert.setString(7, borrowerIdNumber);
                     stmtInsert.setString(8, programOrDept);
-                    stmtInsert.setDouble(9, LATE_PENALTY_PER_DAY);
-                    stmtInsert.setDouble(10, borrowFeeOf(conn, eqId));
+                    stmtInsert.setDouble(9, lateFeeOf(conn, eqId));
+                    // borrowing fee per day x number of days (same breakdown the receipt prints)
+                    stmtInsert.setDouble(10, borrowFeeOf(conn, eqId) * Math.max(1, ChronoUnit.DAYS.between(today, due)));
 
                     if (idSnapshotBytes != null && idSnapshotBytes.length > 0) {
                         stmtInsert.setBytes(11, idSnapshotBytes);
@@ -482,10 +503,11 @@ public class EquipmentDAOImpl implements EquipmentDAO {
         try (Connection conn = DatabaseConnection.getConnection()) {
             double lateRate = LATE_PENALTY_PER_DAY;
             try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT status, borrow_fee, late_fee_per_day FROM equipment WHERE equipment_id = ?")) {
+                    "SELECT status, borrow_fee, late_fee_per_day, is_disabled FROM equipment WHERE equipment_id = ?")) {
                 ps.setInt(1, equipmentId);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (!rs.next()) return "That item no longer exists.";
+                    if (rs.getBoolean("is_disabled")) return "This item has been disabled and can't be reserved.";
                     lateRate = rs.getDouble("late_fee_per_day");
                     if (rs.wasNull() || lateRate < 0) lateRate = LATE_PENALTY_PER_DAY;
                     String st = rs.getString(1) == null ? "" : rs.getString(1).toUpperCase(Locale.ROOT);
@@ -518,7 +540,7 @@ public class EquipmentDAOImpl implements EquipmentDAO {
                 ps.setString(8, borrowerIdNumber);
                 ps.setString(9, programOrDept);
                 ps.setDouble(10, lateRate);
-                ps.setDouble(11, borrowFeeOf(conn, equipmentId));
+                ps.setDouble(11, borrowFeeOf(conn, equipmentId) * Math.max(1, ChronoUnit.DAYS.between(pickupDate, returnDate)));
                 ps.setBytes(12, idSnapshotBytes);
                 ps.executeUpdate();
             }

@@ -49,8 +49,7 @@
 
                 <Button fx:id="btnNavCatalog" text="Borrow Equipment" styleClass="sidebar-btn-active" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewCatalog"/>
                 <Button fx:id="btnNavMyBorrows" text="Active Borrows" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewMyBorrows"/>
-                <Button fx:id="btnNavMyRequests" text="My Requests" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewMyRequests"/>
-                <Button fx:id="btnNavSettings" text="Account Settings" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewSettings"/>
+                <Button fx:id="btnNavEquipCatalog" text="Equipment Catalog" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewEquipCatalog"/>                <Button fx:id="btnNavSettings" text="Account Settings" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewSettings"/>
 
                 <Region VBox.vgrow="ALWAYS"/>
 

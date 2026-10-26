@@ -51,8 +51,7 @@
                 <Button fx:id="btnNavInventory" text="Manage Inventory" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewInventory"/>
                 <Button fx:id="btnNavMaintenance" text="Maintenance Log" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewMaintenance"/>
                 <Button fx:id="btnNavHistory" text="Audit History" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewHistory"/>
-                <Button fx:id="btnNavUsage" text="Most Used Items" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewUsage"/>
-                <Button fx:id="btnNavAccounts" text="Manage Accounts" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewAccounts" visible="false" managed="false"/>
+                <Button fx:id="btnNavEquipCatalog" text="Equipment Catalog" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewEquipCatalog"/>                <Button fx:id="btnNavAccounts" text="Manage Accounts" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewAccounts" visible="false" managed="false"/>
                 <Button fx:id="btnNavFees" text="Fees &amp; Penalties" styleClass="sidebar-btn" maxWidth="Infinity" alignment="BASELINE_LEFT" onAction="#handleViewFees" visible="false" managed="false"/>
                 <!-- SuperAdmin Password Requests Sidebar Button -->
 
